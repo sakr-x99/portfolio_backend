@@ -1,0 +1,181 @@
+"""
+AI Chat Router
+Routes chat requests through the RAG pipeline for context-aware answers.
+Falls back to basic chat if RAG is unavailable.
+"""
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from typing import List
+import os
+import json
+from . import schemas
+
+router = APIRouter()
+
+VLLM_API_BASE = os.getenv("VLLM_API_BASE", "http://localhost:11434/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "qwen2:0.5b")
+
+# Fallback system prompt (used only if RAG pipeline fails)
+FALLBACK_SYSTEM_PROMPT = """
+You are an AI Assistant for Mohamed Sakr, a Backend-focused developer.
+Your goal is to help visitors learn about Mohamed's experience, skills, and projects.
+Be professional, helpful, and concise.
+If you don't have specific information, suggest checking the portfolio website directly.
+"""
+
+
+@router.post("/chat", response_model=schemas.ChatResponse)
+async def chat(request: schemas.ChatRequest):
+    """
+    Main chat endpoint. Tries RAG pipeline first, falls back to basic chat.
+    """
+    try:
+        # Try RAG pipeline first
+        result = await _rag_chat(request)
+        return schemas.ChatResponse(content=result)
+    except Exception as rag_error:
+        print(f"  ⚠ RAG pipeline unavailable ({rag_error}), falling back to basic chat...")
+        try:
+            result = await _basic_chat(request)
+            return schemas.ChatResponse(content=result)
+        except Exception as basic_error:
+            raise HTTPException(
+                status_code=503,
+                detail=f"AI service unavailable. RAG error: {rag_error}. LLM error: {basic_error}"
+            )
+
+@router.post("/chat/stream")
+async def stream_chat(request: schemas.ChatRequest):
+    """
+    Streaming chat endpoint — uses full RAG pipeline (retrieval + lead capture),
+    then streams the final AI response.
+    """
+    async def event_generator():
+        try:
+            async for chunk in _rag_chat_stream(request):
+                yield f"data: {json.dumps({'content': chunk})}\n\n"
+        except Exception as e:
+            print(f"  ⚠ RAG stream failed ({e}), falling back to basic stream...")
+            async for chunk in _basic_chat_stream(request):
+                yield f"data: {json.dumps({'content': chunk})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+async def _rag_chat_stream(request: schemas.ChatRequest):
+    """Streaming chat WITH full RAG pipeline (retrieval + intent + lead capture)."""
+    from app.modules.rag import pipeline, prompt as rag_prompt
+    from app.modules.rag.graph import classify_intent_node, lead_capture_node, summarize_node
+    from app.services.ai.manager import ai_manager
+
+    # Extract question & history
+    user_messages = [m for m in request.messages if m.role == "user"]
+    if not user_messages:
+        raise ValueError("No user message found")
+
+    question = user_messages[-1].content
+    history = [{"role": m.role, "content": m.content} for m in request.messages[:-1]]
+
+    # Step 1: Classify intent (fast, uses small model)
+    state = {
+        "question": question,
+        "history": history,
+        "context": [],
+        "answer": "",
+        "sources": [],
+        "intent": "chat",
+        "lead_data": {},
+        "summary": ""
+    }
+    intent_result = await classify_intent_node(state)
+    state.update(intent_result)
+
+    # Step 2: Retrieve context from Qdrant
+    chunks = pipeline.retrieve_context(question, top_k=3)
+    state["context"] = chunks
+    state["sources"] = list(set(c["source"] for c in chunks))
+
+    # Step 3: Lead capture (if hiring intent)
+    if state["intent"] == "hiring":
+        lead_result = await lead_capture_node(state)
+        state.update(lead_result)
+
+    # Step 4: Build RAG prompt with context
+    messages = rag_prompt.build_rag_prompt(state["context"], state["history"], state.get("summary", ""))
+
+    # Add booking protocol if hiring
+    if state["intent"] == "hiring":
+        import json as json_lib
+        lead = state.get("lead_data", {})
+        missing = []
+        if not lead.get("name"): missing.append("name")
+        if not lead.get("email") and not lead.get("phone"): missing.append("contact info")
+        if not lead.get("meeting_time"): missing.append("meeting time (7-11 PM)")
+        
+        booking_add = (
+            "\n[BOOKING MODE] Collect: Name, Contact, Time (7-11 PM Egypt)."
+            f" Lead: {json_lib.dumps(lead, ensure_ascii=False)}."
+            f" Missing: {', '.join(missing) if missing else 'None — confirm booking'}.\n"
+        )
+        messages[0]["content"] += booking_add
+
+    # Add current question
+    messages.append({"role": "user", "content": question})
+
+    # Step 5: Stream the response
+    async for chunk in ai_manager.generate_stream(
+        messages=messages,
+        temperature=0.3,
+        max_tokens=512
+    ):
+        yield chunk
+
+
+async def _basic_chat_stream(request: schemas.ChatRequest):
+    """Fallback streaming chat without RAG."""
+    from app.services.ai.manager import ai_manager
+    
+    messages = [{"role": "system", "content": FALLBACK_SYSTEM_PROMPT}]
+    for msg in request.messages:
+        messages.append({"role": msg.role, "content": msg.content})
+
+    async for chunk in ai_manager.generate_stream(
+        messages=messages,
+        temperature=0.7,
+        max_tokens=512
+    ):
+        yield chunk
+
+
+async def _rag_chat(request: schemas.ChatRequest) -> str:
+    """Chat using the RAG pipeline (retrieval-augmented generation)."""
+    from app.modules.rag import pipeline
+
+    # Extract the latest user question
+    user_messages = [m for m in request.messages if m.role == "user"]
+    if not user_messages:
+        raise ValueError("No user message found")
+
+    question = user_messages[-1].content
+
+    # Build conversation history (everything except the last user message)
+    history = [{"role": m.role, "content": m.content} for m in request.messages[:-1]]
+
+    # Run RAG pipeline
+    result = await pipeline.generate_answer(question, history)
+    return result["content"]
+
+
+async def _basic_chat(request: schemas.ChatRequest) -> str:
+    """Basic chat without RAG (fallback mode) using the AI Provider System."""
+    from app.services.ai.manager import ai_manager
+    
+    messages = [{"role": "system", "content": FALLBACK_SYSTEM_PROMPT}]
+    for msg in request.messages:
+        messages.append({"role": msg.role, "content": msg.content})
+
+    return await ai_manager.generate(
+        messages=messages,
+        temperature=0.7,
+        max_tokens=512
+    )
