@@ -24,8 +24,16 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "YOUR_SUPER_SECRET_KEY_HERE_CHANGE_IN_PROD"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 7 days
     
-    # Cache (Renamed to bypass auto-detection)
-    CACHE_URL: str = "redis://localhost:6379"
+    # Cache (Supports both REDIS_URL and CACHE_URL for cloud compatibility)
+    REDIS_URL: str = "redis://localhost:6379"
+    CACHE_URL: str | None = None
+
+    @property
+    def REDIS_CONNECTION_URL(self) -> str:
+        # Priority: REDIS_URL > CACHE_URL > default
+        url = self.REDIS_URL or self.CACHE_URL or "redis://localhost:6379"
+        # Upstash rediss:// handling - redis-py handles this automatically if URL is correct
+        return url
 
     # AI Provider System
     GROQ_API_KEY: str | None = None

@@ -60,6 +60,26 @@ app.include_router(rag_router, prefix=f"{settings.API_V1_STR}/rag", tags=["RAG P
 
 @app.on_event("startup")
 async def startup_event():
+    print(f"🚀 Starting {settings.PROJECT_NAME} v{settings.VERSION}...")
+    
+    # Check Database
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        print("✓ Database connection: OK")
+    except Exception as e:
+        print(f"⚠ Database connection: FAILED - {e}")
+
+    # Check Redis
+    try:
+        import redis
+        r = redis.from_url(settings.REDIS_CONNECTION_URL, socket_timeout=5)
+        r.ping()
+        print("✓ Redis connection: OK")
+    except Exception as e:
+        print(f"⚠ Redis connection: FAILED - {e}")
+
     # Ensure Qdrant collection is ready
     from app.modules.rag.vector_store import ensure_collection
     try:
