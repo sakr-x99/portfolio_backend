@@ -24,4 +24,5 @@ SCORE_THRESHOLD = 0.3     # Minimum similarity score (0-1)
 
 # ── Knowledge Base ───────────────────────────────────────────────────────────
 import os
-KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "knowledge")
+import tempfile
+KNOWLEDGE_DIR = os.path.join(tempfile.gettempdir(), "sakr_portfolio_knowledge")
