@@ -219,6 +219,7 @@ def extract_all() -> dict[str, str]:
         }
 
         results = {}
+        # Dynamic Extraction from DB
         for filename, extractor_fn in extractors.items():
             content = extractor_fn(db)
             filepath = os.path.join(config.KNOWLEDGE_DIR, filename)
@@ -226,6 +227,19 @@ def extract_all() -> dict[str, str]:
                 f.write(content)
             results[filename] = content
             print(f"  ✓ Generated {filename} ({len(content)} chars)")
+
+        # Copy static knowledge files
+        static_dir = os.path.join(os.path.dirname(__file__), "knowledge")
+        if os.path.exists(static_dir):
+            for static_file in os.listdir(static_dir):
+                if static_file.endswith(".md"):
+                    with open(os.path.join(static_dir, static_file), "r", encoding="utf-8") as sf:
+                        content = sf.read()
+                    filepath = os.path.join(config.KNOWLEDGE_DIR, static_file)
+                    with open(filepath, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    results[static_file] = content
+                    print(f"  ✓ Copied static {static_file} ({len(content)} chars)")
 
         return results
 
