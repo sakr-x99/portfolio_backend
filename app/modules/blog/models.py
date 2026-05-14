@@ -9,6 +9,7 @@ class BlogPost(Base):
     title = Column(String, index=True)
     slug = Column(String, unique=True, index=True)
     content = Column(Text)
+    content_url = Column(String, nullable=True) # URL to the .md file in Supabase
     summary = Column(Text, nullable=True)
     published = Column(Boolean, default=False)
     created_at = Column(Date, default=datetime.utcnow)

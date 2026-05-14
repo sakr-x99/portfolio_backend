@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION: str = "portfolio_knowledge"
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
 
+    # Supabase
+    SUPABASE_URL: str | None = None
+    SUPABASE_KEY: str | None = None
+    SUPABASE_BUCKET: str = "portfolio-assets"
+
     class Config:
         env_file = ".env"
 
