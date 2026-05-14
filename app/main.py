@@ -34,6 +34,11 @@ app.include_router(trends_router, prefix=f"{settings.API_V1_STR}/trends", tags=[
 def root():
     return {"message": "Welcome to the Portfolio API Modular Monolith!"}
 
+@app.get("/health")
+@app.get("/kaithhealthcheck")
+def health_check():
+    return {"status": "ok"}
+
 @app.on_event("startup")
 async def startup_event():
     print(f"🚀 Starting {settings.PROJECT_NAME} v{settings.VERSION}...")
