@@ -22,11 +22,13 @@ from app.modules.public_portfolio.routers import router as public_router
 from app.modules.biz_management.routers import router as biz_router
 from app.modules.ai.routers import router as ai_router
 from app.modules.rag.routers import router as rag_router
+from app.modules.github_trends.router import router as trends_router
 
 app.include_router(public_router, prefix=f"{settings.API_V1_STR}/public", tags=["Public Portfolio"])
 app.include_router(biz_router, prefix=f"{settings.API_V1_STR}/admin", tags=["Business Management"])
 app.include_router(ai_router, prefix=f"{settings.API_V1_STR}/ai", tags=["AI Integration"])
 app.include_router(rag_router, prefix=f"{settings.API_V1_STR}/rag", tags=["RAG Pipeline"])
+app.include_router(trends_router, prefix=f"{settings.API_V1_STR}/trends", tags=["GitHub Trends"])
 
 @app.get("/")
 def root():
@@ -44,6 +46,7 @@ async def startup_event():
         # Import all models to ensure they are registered
         from app.modules.public_portfolio import models as public_models
         from app.modules.biz_management import models as biz_models
+        from app.modules.github_trends import models as trends_models
         
         # Create tables
         Base.metadata.create_all(bind=engine)
@@ -82,4 +85,12 @@ async def startup_event():
         print("  ✓ RAG Vector Store initialized")
     except Exception as e:
         print(f"  ⚠ RAG Initialization Warning: {e}")
+
+    # 4. Start Background Schedulers
+    try:
+        from app.modules.github_trends.tasks import setup_github_trends_scheduler
+        setup_github_trends_scheduler()
+        print("  ✓ GitHub Trends Scheduler started")
+    except Exception as e:
+        print(f"  ⚠ Scheduler Initialization FAILED: {e}")
 
