@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.supabase_client import supabase
 from app.modules.github_trends.models import TrendingRepo, TrendingCategory
-from app.modules.ai.service import AIService # Assuming this exists
 import asyncio
+from app.services.ai.manager import ai_manager
 
 GITHUB_TRENDING_URL = "https://github.com/trending"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -16,7 +16,6 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 class GitHubTrendsService:
     def __init__(self, db: Session):
         self.db = db
-        self.ai_service = AIService()
 
     async def fetch_trending_repos(self, since: str = "daily", language: str = None) -> List[Dict[str, Any]]:
         url = GITHUB_TRENDING_URL
@@ -114,7 +113,6 @@ class GitHubTrendsService:
         """
         
         # Use ai_manager
-        from app.services.ai.manager import ai_manager
         messages = [{"role": "user", "content": prompt}]
         content = await ai_manager.generate(messages=messages)
         
