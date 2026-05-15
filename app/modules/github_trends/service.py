@@ -32,7 +32,7 @@ class GitHubTrendsService:
     def _parse_github_html(self, html: str) -> List[Dict[str, Any]]:
         soup = bs4.BeautifulSoup(html, "lxml")
         repos = []
-        for article in soup.select("article.Box-row"):
+        for i, article in enumerate(soup.select("article.Box-row")):
             # Repo Info
             link_tag = article.select_one("h2.h3 a")
             if not link_tag: continue
@@ -61,6 +61,7 @@ class GitHubTrendsService:
             avatar_url = avatar_tag["src"] if avatar_tag else None
 
             repos.append({
+                "rank": i + 1,
                 "name": name,
                 "owner": owner,
                 "full_name": full_name,
@@ -76,6 +77,9 @@ class GitHubTrendsService:
         return repos
 
     async def process_and_store_repos(self, repos: List[Dict[str, Any]]):
+        # Set all as inactive first to refresh the top list
+        await self.collection.update_many({}, {"$set": {"is_active": False}})
+        
         for repo_data in repos:
             # Check if exists in MongoDB
             existing_repo = await self.collection.find_one({"full_name": repo_data["full_name"]})
@@ -83,23 +87,38 @@ class GitHubTrendsService:
             if not existing_repo:
                 repo_data["created_at"] = datetime.utcnow()
                 result = await self.collection.insert_one(repo_data)
-                repo_id = result.inserted_id
-                
-                # Update the object with the ID (converted to string if needed, but here we just use the dict)
-                repo_data["_id"] = repo_id
+                repo_data["_id"] = result.inserted_id
                 
                 # Generate AI Content
                 await self.generate_and_store_ai_content(repo_data)
             else:
-                # Update stats
+                # Update stats and rank
+                update_data = {
+                    "stars": repo_data["stars"],
+                    "forks": repo_data["forks"],
+                    "rank": repo_data["rank"],
+                    "is_active": True,
+                    "updated_at": datetime.utcnow()
+                }
+                
+                # Only re-generate AI content if it doesn't exist or is older than 24h
+                needs_ai = False
+                if "arabic_summary" not in existing_repo:
+                    needs_ai = True
+                else:
+                    # Check age
+                    updated_at = existing_repo.get("updated_at")
+                    if updated_at and (datetime.utcnow() - updated_at).total_seconds() > 86400:
+                         needs_ai = True
+                
                 await self.collection.update_one(
                     {"_id": existing_repo["_id"]},
-                    {"$set": {
-                        "stars": repo_data["stars"],
-                        "forks": repo_data["forks"],
-                        "updated_at": datetime.utcnow()
-                    }}
+                    {"$set": update_data}
                 )
+                
+                if needs_ai:
+                    repo_data["_id"] = existing_repo["_id"]
+                    await self.generate_and_store_ai_content(repo_data)
 
     async def generate_and_store_ai_content(self, repo: Dict[str, Any]):
         # Use crawl4ai to get full repo content if possible
@@ -224,7 +243,7 @@ class GitHubTrendsService:
         if language:
             query["language"] = language
             
-        cursor = self.collection.find(query).sort("stars", -1).limit(limit)
+        cursor = self.collection.find(query).sort("rank", 1).limit(limit)
         repos = await cursor.to_list(length=limit)
         
         for r in repos:
