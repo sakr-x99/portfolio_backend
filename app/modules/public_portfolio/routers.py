@@ -83,13 +83,39 @@ def create_experience(exp: schemas.ExperienceCreate, db: Session = Depends(get_d
     from datetime import datetime
     data = exp.model_dump()
     data['start_date'] = datetime.strptime(data['start_date'], '%Y-%m-%d').date()
-    if data['end_date']:
-        data['end_date'] = datetime.strptime(data['end_date'], '%Y-%m-%d').date()
+    data['end_date'] = datetime.strptime(data['end_date'], '%Y-%m-%d').date() if data['end_date'] else None
     db_exp = models.Experience(**data)
     db.add(db_exp)
     db.commit()
     db.refresh(db_exp)
     return db_exp
+
+@router.put("/experiences/{exp_id}", response_model=schemas.ExperienceResponse)
+def update_experience(exp_id: int, exp: schemas.ExperienceCreate, db: Session = Depends(get_db)):
+    from datetime import datetime
+    db_exp = db.query(models.Experience).filter(models.Experience.id == exp_id).first()
+    if not db_exp:
+        raise HTTPException(status_code=404, detail="Experience not found")
+    
+    data = exp.model_dump()
+    data['start_date'] = datetime.strptime(data['start_date'], '%Y-%m-%d').date()
+    data['end_date'] = datetime.strptime(data['end_date'], '%Y-%m-%d').date() if data['end_date'] else None
+    
+    for key, value in data.items():
+        setattr(db_exp, key, value)
+    
+    db.commit()
+    db.refresh(db_exp)
+    return db_exp
+
+@router.delete("/experiences/{exp_id}")
+def delete_experience(exp_id: int, db: Session = Depends(get_db)):
+    db_exp = db.query(models.Experience).filter(models.Experience.id == exp_id).first()
+    if not db_exp:
+        raise HTTPException(status_code=404, detail="Experience not found")
+    db.delete(db_exp)
+    db.commit()
+    return {"message": "Experience deleted"}
 
 # --- Education ---
 @router.get("/education", response_model=List[schemas.EducationResponse])
@@ -101,13 +127,39 @@ def create_education(edu: schemas.EducationCreate, db: Session = Depends(get_db)
     from datetime import datetime
     data = edu.model_dump()
     data['start_date'] = datetime.strptime(data['start_date'], '%Y-%m-%d').date()
-    if data['end_date']:
-        data['end_date'] = datetime.strptime(data['end_date'], '%Y-%m-%d').date()
+    data['end_date'] = datetime.strptime(data['end_date'], '%Y-%m-%d').date() if data['end_date'] else None
     db_edu = models.Education(**data)
     db.add(db_edu)
     db.commit()
     db.refresh(db_edu)
     return db_edu
+
+@router.put("/education/{edu_id}", response_model=schemas.EducationResponse)
+def update_education(edu_id: int, edu: schemas.EducationCreate, db: Session = Depends(get_db)):
+    from datetime import datetime
+    db_edu = db.query(models.Education).filter(models.Education.id == edu_id).first()
+    if not db_edu:
+        raise HTTPException(status_code=404, detail="Education not found")
+    
+    data = edu.model_dump()
+    data['start_date'] = datetime.strptime(data['start_date'], '%Y-%m-%d').date()
+    data['end_date'] = datetime.strptime(data['end_date'], '%Y-%m-%d').date() if data['end_date'] else None
+    
+    for key, value in data.items():
+        setattr(db_edu, key, value)
+    
+    db.commit()
+    db.refresh(db_edu)
+    return db_edu
+
+@router.delete("/education/{edu_id}")
+def delete_education(edu_id: int, db: Session = Depends(get_db)):
+    db_edu = db.query(models.Education).filter(models.Education.id == edu_id).first()
+    if not db_edu:
+        raise HTTPException(status_code=404, detail="Education not found")
+    db.delete(db_edu)
+    db.commit()
+    return {"message": "Education deleted"}
 
 # --- Services ---
 @router.get("/services", response_model=List[schemas.ServiceResponse])
