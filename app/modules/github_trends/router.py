@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, BackgroundTasks
 from typing import List, Optional
 from app.modules.github_trends import service
 
@@ -28,9 +28,13 @@ async def get_repo_details(full_name: str):
     return repo
 
 @router.post("/refresh")
-async def trigger_refresh():
+async def trigger_refresh(background_tasks: BackgroundTasks):
     """Manually trigger a refresh of trending repos."""
-    s = service.GitHubTrendsService()
-    repos = await s.fetch_trending_repos()
-    await s.process_and_store_repos(repos)
-    return {"message": f"Successfully processed {len(repos)} repositories"}
+    async def run_refresh():
+        s = service.GitHubTrendsService()
+        repos = await s.fetch_trending_repos()
+        await s.process_and_store_repos(repos)
+        print(f"✅ Successfully processed {len(repos)} repositories")
+
+    background_tasks.add_task(run_refresh)
+    return {"message": "Refresh process started in background"}
