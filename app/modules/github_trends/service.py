@@ -86,18 +86,23 @@ class GitHubTrendsService:
             
             if not existing_repo:
                 repo_data["created_at"] = datetime.utcnow()
+                # Insert but keep inactive until AI is done
+                repo_data["is_active"] = False 
                 result = await self.collection.insert_one(repo_data)
                 repo_data["_id"] = result.inserted_id
                 
                 # Generate AI Content
                 await self.generate_and_store_ai_content(repo_data)
+                
+                # NOW activate it so it appears in UI
+                await self.collection.update_one({"_id": repo_data["_id"]}, {"$set": {"is_active": True}})
             else:
                 # Update stats and rank
                 update_data = {
                     "stars": repo_data["stars"],
                     "forks": repo_data["forks"],
                     "rank": repo_data["rank"],
-                    "is_active": True,
+                    "is_active": True, # Reactivate immediately if it already has AI content
                     "updated_at": datetime.utcnow()
                 }
                 
@@ -105,8 +110,8 @@ class GitHubTrendsService:
                 needs_ai = False
                 if "arabic_summary" not in existing_repo:
                     needs_ai = True
+                    update_data["is_active"] = False # Hide until AI is done
                 else:
-                    # Check age
                     updated_at = existing_repo.get("updated_at")
                     if updated_at and (datetime.utcnow() - updated_at).total_seconds() > 86400:
                          needs_ai = True
@@ -119,6 +124,11 @@ class GitHubTrendsService:
                 if needs_ai:
                     repo_data["_id"] = existing_repo["_id"]
                     await self.generate_and_store_ai_content(repo_data)
+                    # Activate after AI
+                    await self.collection.update_one({"_id": repo_data["_id"]}, {"$set": {"is_active": True}})
+
+            # Small delay to be "one by one" and avoid rate limits
+            await asyncio.sleep(2)
 
     async def generate_and_store_ai_content(self, repo: Dict[str, Any]):
         # Use crawl4ai to get full repo content if possible
