@@ -175,12 +175,16 @@ class GitHubTrendsService:
                 )
                 
                 # Update MongoDB with storage path and summary
-                arabic_summary = content.split("---")[-1].strip()[:200] + "..."
+                arabic_summary = content.split("---")[-1].strip()[:500]
+                public_url = supabase.storage.from_("github-trends").get_public_url(path)
+                
                 await self.collection.update_one(
                     {"_id": repo["_id"]},
                     {"$set": {
                         "storage_path": path,
-                        "arabic_summary": arabic_summary
+                        "analysis_url": public_url,
+                        "arabic_summary": arabic_summary,
+                        "updated_at": datetime.utcnow()
                     }}
                 )
                 
