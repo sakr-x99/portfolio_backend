@@ -34,8 +34,8 @@ class Experience(Base):
     id = Column(Integer, primary_key=True, index=True)
     company = Column(String)
     role = Column(String)
-    start_date = Column(Date)
-    end_date = Column(Date, nullable=True)
+    start_date = Column(String) # Store as YYYY-MM or similar
+    end_date = Column(String, nullable=True)
     description = Column(Text)
 
 class Education(Base):
@@ -43,8 +43,6 @@ class Education(Base):
     id = Column(Integer, primary_key=True, index=True)
     institution = Column(String)
     degree = Column(String)
-    start_date = Column(Date)
-    end_date = Column(Date, nullable=True)
 
 class Article(Base):
     __tablename__ = "public_articles"

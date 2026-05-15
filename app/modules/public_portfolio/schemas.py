@@ -55,8 +55,6 @@ class ExperienceResponse(ExperienceBase):
 class EducationBase(BaseModel):
     institution: str
     degree: str
-    start_date: str
-    end_date: Optional[str] = None
 
 class EducationCreate(EducationBase):
     pass
