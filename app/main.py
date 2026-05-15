@@ -8,6 +8,20 @@ app = FastAPI(
 )
 
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Response
+from starlette.middleware.base import BaseHTTPMiddleware
+import re
+
+class CacheControlMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response: Response = await call_next(request)
+        if request.method == "GET":
+            path = request.url.path
+            if re.search(r'/public/(projects|skills|experiences|education|services|articles)', path):
+                response.headers["Cache-Control"] = "public, max-age=120, s-maxage=120, stale-while-revalidate=60"
+            elif re.search(r'/public/', path):
+                response.headers["Cache-Control"] = "public, max-age=60, s-maxage=60"
+        return response
 
 # Set all origins enabled by default
 app.add_middleware(
@@ -17,6 +31,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(CacheControlMiddleware)
+
+from app.core.rate_limit import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware, max_requests=20, window_seconds=60)
 
 from app.modules.public_portfolio.routers import router as public_router
 from app.modules.biz_management.routers import router as biz_router

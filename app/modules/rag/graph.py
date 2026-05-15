@@ -1,4 +1,5 @@
 import json
+import asyncio
 from datetime import datetime
 from typing import List, Dict, TypedDict
 from langgraph.graph import StateGraph, START, END
@@ -121,26 +122,30 @@ async def lead_capture_node(state: RAGState) -> Dict:
         # Save if we have any useful info
         if lead_data.get("email") or lead_data.get("phone") or lead_data.get("name"):
             print(f"  → Saving lead in DB...")
-            db = SessionLocal()
-            try:
-                new_lead = Lead(
-                    name=lead_data.get("name"),
-                    email=lead_data.get("email"),
-                    phone=lead_data.get("phone"),
-                    inquiry_type=lead_data.get("inquiry_type") or "General",
-                    message=lead_data.get("message") or state["question"],
-                    meeting_time=lead_data.get("meeting_time"),
-                    summary=state.get("summary", ""),
-                    created_at=datetime.now().isoformat()
-                )
-                db.add(new_lead)
-                db.commit()
-                print(f"  ✓ Lead saved! Name={new_lead.name}, Phone={new_lead.phone}")
-            except Exception as db_err:
-                db.rollback()
-                print(f"  ⚠ DB save error: {db_err}")
-            finally:
-                db.close()
+
+            def _save_lead_sync(ld, question, summary):
+                db = SessionLocal()
+                try:
+                    new_lead = Lead(
+                        name=ld.get("name"),
+                        email=ld.get("email"),
+                        phone=ld.get("phone"),
+                        inquiry_type=ld.get("inquiry_type") or "General",
+                        message=ld.get("message") or question,
+                        meeting_time=ld.get("meeting_time"),
+                        summary=summary,
+                        created_at=datetime.now().isoformat()
+                    )
+                    db.add(new_lead)
+                    db.commit()
+                    print(f"  ✓ Lead saved! Name={new_lead.name}, Phone={new_lead.phone}")
+                except Exception as db_err:
+                    db.rollback()
+                    print(f"  ⚠ DB save error: {db_err}")
+                finally:
+                    db.close()
+
+            await asyncio.to_thread(_save_lead_sync, lead_data, state["question"], state.get("summary", ""))
         else:
             print(f"  → No contact info found yet, skipping save.")
         
