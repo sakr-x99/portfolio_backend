@@ -84,6 +84,51 @@ def retrieve_context(query: str, top_k: int = 5) -> List[Dict]:
 
 from .graph import rag_app
 
+async def prepare_rag_state(
+    question: str,
+    conversation_history: List[Dict] = None,
+) -> Dict:
+    """
+    Run all RAG pre-generation steps via the LangGraph nodes:
+    1. Intent classification
+    2. Query rewrite
+    3. Context retrieval from Qdrant
+    4. Lead capture (if hiring intent)
+
+    Returns the full state ready for prompt building + streaming generation.
+    This avoids duplicating graph logic in streaming endpoints.
+    """
+    history = list(conversation_history or [])
+
+    state = {
+        "question": question,
+        "history": history,
+        "context": [],
+        "answer": "",
+        "sources": [],
+        "intent": "chat",
+        "lead_data": {},
+        "summary": ""
+    }
+
+    from .graph import classify_intent_node, rewrite_node, lead_capture_node
+
+    intent_result = await classify_intent_node(state)
+    state.update(intent_result)
+
+    rewrite_result = await rewrite_node(state)
+    state.update(rewrite_result)
+
+    state["context"] = retrieve_context(state["question"], top_k=3)
+    state["sources"] = list(set(c["source"] for c in state["context"]))
+
+    if state["intent"] == "hiring":
+        lead_result = await lead_capture_node(state)
+        state.update(lead_result)
+
+    return state
+
+
 async def generate_answer(
     question: str,
     conversation_history: List[Dict] = None,

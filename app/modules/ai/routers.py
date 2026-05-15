@@ -63,12 +63,11 @@ async def stream_chat(request: schemas.ChatRequest):
 
 
 async def _rag_chat_stream(request: schemas.ChatRequest):
-    """Streaming chat WITH full RAG pipeline (retrieval + intent + lead capture)."""
+    """Streaming chat using the RAG pipeline — no duplicated graph logic."""
     from app.modules.rag import pipeline, prompt as rag_prompt
-    from app.modules.rag.graph import classify_intent_node, lead_capture_node, summarize_node
     from app.services.ai.manager import ai_manager
+    import json as json_lib
 
-    # Extract question & history
     user_messages = [m for m in request.messages if m.role == "user"]
     if not user_messages:
         raise ValueError("No user message found")
@@ -76,42 +75,20 @@ async def _rag_chat_stream(request: schemas.ChatRequest):
     question = user_messages[-1].content
     history = [{"role": m.role, "content": m.content} for m in request.messages[:-1]]
 
-    # Step 1: Classify intent (fast, uses small model)
-    state = {
-        "question": question,
-        "history": history,
-        "context": [],
-        "answer": "",
-        "sources": [],
-        "intent": "chat",
-        "lead_data": {},
-        "summary": ""
-    }
-    intent_result = await classify_intent_node(state)
-    state.update(intent_result)
+    # Use the shared RAG state preparation (calls graph nodes internally)
+    state = await pipeline.prepare_rag_state(question, history)
 
-    # Step 2: Retrieve context from Qdrant
-    chunks = pipeline.retrieve_context(question, top_k=3)
-    state["context"] = chunks
-    state["sources"] = list(set(c["source"] for c in chunks))
-
-    # Step 3: Lead capture (if hiring intent)
-    if state["intent"] == "hiring":
-        lead_result = await lead_capture_node(state)
-        state.update(lead_result)
-
-    # Step 4: Build RAG prompt with context
+    # Build prompt with retrieved context
     messages = rag_prompt.build_rag_prompt(state["context"], state["history"], state.get("summary", ""))
 
-    # Add booking protocol if hiring
+    # Add booking protocol if hiring intent
     if state["intent"] == "hiring":
-        import json as json_lib
         lead = state.get("lead_data", {})
         missing = []
         if not lead.get("name"): missing.append("name")
         if not lead.get("email") and not lead.get("phone"): missing.append("contact info")
         if not lead.get("meeting_time"): missing.append("meeting time (7-11 PM)")
-        
+
         booking_add = (
             "\n[BOOKING MODE] Collect: Name, Contact, Time (7-11 PM Egypt)."
             f" Lead: {json_lib.dumps(lead, ensure_ascii=False)}."
@@ -119,10 +96,8 @@ async def _rag_chat_stream(request: schemas.ChatRequest):
         )
         messages[0]["content"] += booking_add
 
-    # Add current question
     messages.append({"role": "user", "content": question})
 
-    # Step 5: Stream the response
     async for chunk in ai_manager.generate_stream(
         messages=messages,
         temperature=0.3,

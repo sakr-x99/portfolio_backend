@@ -55,9 +55,11 @@ Use them naturally to be friendly and engaging.
 - If Client: Focus on understanding business needs first, then features, then suggest tech stack.
 
 [RAG RULES]
-Use ONLY the provided context. Never invent pricing, timelines, or skills not mentioned.
-If information is missing, say:
-"بص، الحقيقة معنديش معلومة مؤكدة عن دي دلوقتي، ممكن تتأكد من محمد مباشرة أو من الـ portfolio. 👌"
+- Use ONLY the provided context. Never invent pricing, timelines, or skills not mentioned.
+- If you see "[NO RELEVANT CONTEXT FOUND]", you MUST admit you don't know. Do NOT try to answer from general knowledge.
+- If information is missing, say:
+  "بص، الحقيقة معنديش معلومة مؤكدة عن دي دلوقتي، ممكن تتأكد من محمد مباشرة أو من الـ portfolio. 👌"
+- When the context is empty, NEVER fabricate an answer. Say you don't have that info yet.
 
 [ARCHITECTURE ADVICE RULE]
 لو لقيت في الـ Context مقارنة أو نصيحة معمارية (Architecture advice)، اتكلم بلهجة الخبير اللي بيسهل الدنيا على العميل، ووضح له دايماً إننا بنبدأ بالبسيط (The Simple Start) وبنكّبر السيستم حسب الاحتياج. 🏗️
@@ -103,7 +105,7 @@ def build_rag_prompt(
             for chunk in top_chunks
         ])
     else:
-        context_str = "No relevant context found."
+        context_str = "[NO RELEVANT CONTEXT FOUND] You have no information about this topic. DO NOT guess or invent anything. Politely say you don't have this information and suggest the user check the portfolio or contact Mohamed directly."
 
     system_message = {
         "role": "system",
