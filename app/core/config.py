@@ -35,13 +35,21 @@ class Settings(BaseSettings):
         # Upstash rediss:// handling - redis-py handles this automatically if URL is correct
         return url
 
-    # AI Provider System
+    # AI Provider System 1 (Main Agent - Sakr AI)
     GROQ_API_KEY: str | None = None
     GEMINI_API_KEY: str | None = None
     PRIMARY_AI_PROVIDER: str = "groq"
     FALLBACK_PROVIDER: str = "gemini"
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    # AI Provider System 2 (Secondary Agent - GitHub Trends)
+    GROQ_API_KEY_2: str | None = None
+    GEMINI_API_KEY_2: str | None = None
+    PRIMARY_AI_PROVIDER_2: str = "groq"
+    FALLBACK_PROVIDER_2: str = "gemini"
+    GROQ_MODEL_2: str = "llama-3.3-70b-versatile"
+    GEMINI_MODEL_2: str = "gemini-2.5-flash"
 
     # RAG / Vector DB
     QDRANT_URL: str = "http://localhost:6333"

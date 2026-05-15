@@ -8,13 +8,31 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 class AIManager:
-    def __init__(self):
+    def __init__(self, config_profile: str = "primary"):
+        """
+        Initialize AIManager with a specific configuration profile.
+        'primary' uses the standard keys.
+        'secondary' (or other) uses keys with '_2' suffix.
+        """
+        if config_profile == "secondary":
+            groq_key = settings.GROQ_API_KEY_2
+            gemini_key = settings.GEMINI_API_KEY_2
+            groq_model = settings.GROQ_MODEL_2
+            gemini_model = settings.GEMINI_MODEL_2
+            self.primary = settings.PRIMARY_AI_PROVIDER_2
+            self.fallback = settings.FALLBACK_PROVIDER_2
+        else:
+            groq_key = settings.GROQ_API_KEY
+            gemini_key = settings.GEMINI_API_KEY
+            groq_model = settings.GROQ_MODEL
+            gemini_model = settings.GEMINI_MODEL
+            self.primary = settings.PRIMARY_AI_PROVIDER
+            self.fallback = settings.FALLBACK_PROVIDER
+
         self.providers: Dict[str, BaseAIProvider] = {
-            "groq": GroqProvider(),
-            "gemini": GeminiProvider()
+            "groq": GroqProvider(api_key=groq_key, model=groq_model),
+            "gemini": GeminiProvider(api_key=gemini_key, model=gemini_model)
         }
-        self.primary = settings.PRIMARY_AI_PROVIDER
-        self.fallback = settings.FALLBACK_PROVIDER
 
     async def generate(self, messages: List[Dict[str, str]], **kwargs) -> str:
         # Check if a specific provider is requested
@@ -72,5 +90,8 @@ class AIManager:
                 logger.error(f"Fallback AI provider ({self.fallback}) streaming failed: {str(fe)}")
                 raise Exception(f"All AI providers failed during streaming. Last error: {str(fe)}")
 
-# Global instance
-ai_manager = AIManager()
+# Main instance for Sakr AI (Primary Agent)
+ai_manager = AIManager(config_profile="primary")
+
+# Instance for GitHub Trends Agent (Secondary Agent)
+github_trends_ai = AIManager(config_profile="secondary")

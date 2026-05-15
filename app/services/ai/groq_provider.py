@@ -4,9 +4,9 @@ from .base import BaseAIProvider
 from app.core.config import settings
 
 class GroqProvider(BaseAIProvider):
-    def __init__(self):
-        self.client = AsyncGroq(api_key=settings.GROQ_API_KEY)
-        self.model = settings.GROQ_MODEL
+    def __init__(self, api_key: str = None, model: str = None):
+        self.client = AsyncGroq(api_key=api_key or settings.GROQ_API_KEY)
+        self.model = model or settings.GROQ_MODEL
 
     async def generate(self, messages: List[Dict[str, str]], **kwargs) -> str:
         try:

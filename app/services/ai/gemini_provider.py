@@ -4,9 +4,11 @@ from .base import BaseAIProvider
 from app.core.config import settings
 
 class GeminiProvider(BaseAIProvider):
-    def __init__(self):
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        self.model_name = settings.GEMINI_MODEL
+    def __init__(self, api_key: str = None, model: str = None):
+        self.api_key = api_key or settings.GEMINI_API_KEY
+        self.model_name = model or settings.GEMINI_MODEL
+        if self.api_key:
+            genai.configure(api_key=self.api_key)
 
     async def generate(self, messages: List[Dict[str, str]], **kwargs) -> str:
         try:
