@@ -3,19 +3,20 @@ import bs4
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import json
-from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.supabase_client import supabase
-from app.modules.github_trends.models import TrendingRepo, TrendingCategory
+from app.core.mongodb_client import mongodb_client
 import asyncio
 from app.services.ai.manager import github_trends_ai
+from app.services.scraping.crawl_service import crawl_service
 
 GITHUB_TRENDING_URL = "https://github.com/trending"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
 class GitHubTrendsService:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(self):
+        self.db = mongodb_client.get_db()
+        self.collection = self.db["trending_repos"]
 
     async def fetch_trending_repos(self, since: str = "daily", language: str = None) -> List[Dict[str, Any]]:
         url = GITHUB_TRENDING_URL
@@ -68,35 +69,50 @@ class GitHubTrendsService:
                 "forks": forks,
                 "language": language,
                 "github_url": f"https://github.com/{full_name}",
-                "avatar_url": avatar_url
+                "avatar_url": avatar_url,
+                "is_active": True,
+                "updated_at": datetime.utcnow()
             })
         return repos
 
     async def process_and_store_repos(self, repos: List[Dict[str, Any]]):
         for repo_data in repos:
-            # Check if exists
-            db_repo = self.db.query(TrendingRepo).filter(TrendingRepo.full_name == repo_data["full_name"]).first()
+            # Check if exists in MongoDB
+            existing_repo = await self.collection.find_one({"full_name": repo_data["full_name"]})
             
-            if not db_repo:
-                db_repo = TrendingRepo(**repo_data)
-                self.db.add(db_repo)
-                self.db.commit()
-                self.db.refresh(db_repo)
+            if not existing_repo:
+                repo_data["created_at"] = datetime.utcnow()
+                result = await self.collection.insert_one(repo_data)
+                repo_id = result.inserted_id
+                
+                # Update the object with the ID (converted to string if needed, but here we just use the dict)
+                repo_data["_id"] = repo_id
                 
                 # Generate AI Content
-                await self.generate_and_store_ai_content(db_repo)
+                await self.generate_and_store_ai_content(repo_data)
             else:
                 # Update stats
-                db_repo.stars = repo_data["stars"]
-                db_repo.forks = repo_data["forks"]
-                self.db.commit()
+                await self.collection.update_one(
+                    {"_id": existing_repo["_id"]},
+                    {"$set": {
+                        "stars": repo_data["stars"],
+                        "forks": repo_data["forks"],
+                        "updated_at": datetime.utcnow()
+                    }}
+                )
 
-    async def generate_and_store_ai_content(self, repo: TrendingRepo):
+    async def generate_and_store_ai_content(self, repo: Dict[str, Any]):
+        # Use crawl4ai to get full repo content if possible
+        repo_content = await crawl_service.crawl_url(repo["github_url"])
+        
         prompt = f"""
         Analyze this GitHub repository:
-        Name: {repo.full_name}
-        Description: {repo.description}
-        Language: {repo.language}
+        Name: {repo['full_name']}
+        Description: {repo['description']}
+        Language: {repo['language']}
+        
+        Full Repository Content (Extracted via Crawl4AI):
+        {repo_content if repo_content else "No additional content found."}
         
         Generate a premium Arabic markdown explanation. 
         Focus on:
@@ -112,12 +128,12 @@ class GitHubTrendsService:
         Include frontmatter with: title, slug, language, category, stars, difficulty, topics.
         """
         
-        # Use ai_manager
+        # Use github_trends_ai
         messages = [{"role": "user", "content": prompt}]
         content = await github_trends_ai.generate(messages=messages)
         
         # Store in Supabase
-        filename = f"{repo.full_name.replace('/', '-')}.md"
+        filename = f"{repo['full_name'].replace('/', '-')}.md"
         path = f"repos/{filename}"
         
         if supabase:
@@ -129,18 +145,22 @@ class GitHubTrendsService:
                     file_options={"upsert": "true", "content-type": "text/markdown"}
                 )
                 
-                repo.storage_path = path
-                
-                # Simple extraction for summary (first 200 chars after frontmatter)
-                repo.arabic_summary = content.split("---")[-1].strip()[:200] + "..."
-                self.db.commit()
+                # Update MongoDB with storage path and summary
+                arabic_summary = content.split("---")[-1].strip()[:200] + "..."
+                await self.collection.update_one(
+                    {"_id": repo["_id"]},
+                    {"$set": {
+                        "storage_path": path,
+                        "arabic_summary": arabic_summary
+                    }}
+                )
                 
                 # Index in Qdrant
                 await self.index_repo_in_qdrant(repo, content)
             except Exception as e:
                 print(f"Error storing/indexing: {e}")
 
-    async def index_repo_in_qdrant(self, repo: TrendingRepo, content: str):
+    async def index_repo_in_qdrant(self, repo: Dict[str, Any], content: str):
         from app.modules.rag.embeddings import embed_texts
         from app.modules.rag.vector_store import _get_client
         from app.modules.rag import config as rag_config
@@ -157,10 +177,10 @@ class GitHubTrendsService:
             vector=embedding,
             payload={
                 "text": clean_text,
-                "full_name": repo.full_name,
+                "full_name": repo["full_name"],
                 "source": "github_trends",
-                "language": repo.language,
-                "stars": repo.stars
+                "language": repo["language"],
+                "stars": repo["stars"]
             }
         )
         
@@ -169,7 +189,7 @@ class GitHubTrendsService:
             points=[point]
         )
 
-    async def semantic_search(self, query: str, limit: int = 10) -> List[TrendingRepo]:
+    async def semantic_search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         from app.modules.rag.embeddings import embed_query
         from app.modules.rag.vector_store import _get_client
         from app.modules.rag import config as rag_config
@@ -188,4 +208,31 @@ class GitHubTrendsService:
         )
 
         repo_names = [hit.payload["full_name"] for hit in results]
-        return self.db.query(TrendingRepo).filter(TrendingRepo.full_name.in_(repo_names)).all()
+        
+        # Fetch from MongoDB
+        cursor = self.collection.find({"full_name": {"$in": repo_names}})
+        repos = await cursor.to_list(length=limit)
+        
+        # Convert ObjectId to string for JSON serialization
+        for r in repos:
+            r["_id"] = str(r["_id"])
+            
+        return repos
+
+    async def get_active_repos(self, language: Optional[str] = None, limit: int = 25) -> List[Dict[str, Any]]:
+        query = {"is_active": True}
+        if language:
+            query["language"] = language
+            
+        cursor = self.collection.find(query).sort("stars", -1).limit(limit)
+        repos = await cursor.to_list(length=limit)
+        
+        for r in repos:
+            r["_id"] = str(r["_id"])
+        return repos
+
+    async def get_repo_by_full_name(self, full_name: str) -> Optional[Dict[str, Any]]:
+        repo = await self.collection.find_one({"full_name": full_name})
+        if repo:
+            repo["_id"] = str(repo["_id"])
+        return repo

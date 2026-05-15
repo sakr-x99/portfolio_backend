@@ -1,45 +1,36 @@
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import List, Optional
-from app.core.database import get_db
-from app.modules.github_trends import models, schemas, service
+from app.modules.github_trends import service
 
 router = APIRouter()
 
-@router.get("/repos", response_model=List[schemas.RepoOut])
+@router.get("/repos")
 async def get_trending_repos(
     language: Optional[str] = None,
-    category: Optional[str] = None,
-    since: str = "daily",
-    db: Session = Depends(get_db)
+    since: str = "daily"
 ):
-    query = db.query(models.TrendingRepo).filter(models.TrendingRepo.is_active == True)
-    
-    if language:
-        query = query.filter(models.TrendingRepo.language == language)
-    
-    return query.order_by(models.TrendingRepo.stars.desc()).all()
+    s = service.GitHubTrendsService()
+    return await s.get_active_repos(language=language)
 
-@router.get("/search", response_model=List[schemas.RepoOut])
+@router.get("/search")
 async def search_repos(
-    q: str,
-    db: Session = Depends(get_db)
+    q: str
 ):
-    s = service.GitHubTrendsService(db)
+    s = service.GitHubTrendsService()
     return await s.semantic_search(q)
 
-@router.get("/repos/{full_name:path}", response_model=schemas.RepoOut)
-async def get_repo_details(full_name: str, db: Session = Depends(get_db)):
-    repo = db.query(models.TrendingRepo).filter(models.TrendingRepo.full_name == full_name).first()
+@router.get("/repos/{full_name:path}")
+async def get_repo_details(full_name: str):
+    s = service.GitHubTrendsService()
+    repo = await s.get_repo_by_full_name(full_name)
     if not repo:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Repository not found")
     return repo
 
 @router.post("/refresh")
-async def trigger_refresh(db: Session = Depends(get_db)):
+async def trigger_refresh():
     """Manually trigger a refresh of trending repos."""
-    s = service.GitHubTrendsService(db)
+    s = service.GitHubTrendsService()
     repos = await s.fetch_trending_repos()
     await s.process_and_store_repos(repos)
     return {"message": f"Successfully processed {len(repos)} repositories"}

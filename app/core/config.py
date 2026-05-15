@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     DB_PASSWORD: str = "adminpassword"
     DB_NAME: str = "portfolio"
     DATABASE_URL: str | None = None
+    MONGODB_URL: str | None = None
     
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:

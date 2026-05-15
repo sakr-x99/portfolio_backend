@@ -9,6 +9,7 @@ psycopg2-binary==2.9.9
 redis==5.0.1
 sqlalchemy==2.0.23
 alembic==1.12.1
+motor==3.4.0
 
 # RAG & Vector DB
 qdrant-client==1.9.0
@@ -29,6 +30,8 @@ supabase==2.5.1
 # Scraping
 beautifulsoup4==4.12.2
 lxml==4.9.3
+crawl4ai==0.2.7
+playwright==1.44.0
 
 # Scheduling
 apscheduler==3.10.4
