@@ -41,19 +41,20 @@ from app.modules.biz_management.routers import router as biz_router
 from app.modules.ai.routers import router as ai_router
 from app.modules.rag.routers import router as rag_router
 from app.modules.github_trends.router import router as trends_router
+from app.modules.auth.routers import router as auth_router
 
 app.include_router(public_router, prefix=f"{settings.API_V1_STR}/public", tags=["Public Portfolio"])
 app.include_router(biz_router, prefix=f"{settings.API_V1_STR}/admin", tags=["Business Management"])
 app.include_router(ai_router, prefix=f"{settings.API_V1_STR}/ai", tags=["AI Integration"])
 app.include_router(rag_router, prefix=f"{settings.API_V1_STR}/rag", tags=["RAG Pipeline"])
 app.include_router(trends_router, prefix=f"{settings.API_V1_STR}/trends", tags=["GitHub Trends"])
+app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["Auth"])
 
 @app.get("/")
 def root():
     return {"message": "Welcome to the Portfolio API Modular Monolith!"}
 
 @app.get("/health")
-@app.get("/kaithhealthcheck")
 def health_check():
     return {"status": "ok"}
 

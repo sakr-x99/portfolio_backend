@@ -1,8 +1,8 @@
-FROM python:3.11-slim
+# ── Build Stage ──────────────────────────────────────────
+FROM python:3.11-slim AS builder
 
-WORKDIR /app
+WORKDIR /build
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
@@ -10,18 +10,28 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-
 RUN pip install --no-cache-dir -r requirements.txt
-RUN playwright install --with-deps chromium
+
+# ── Runtime Stage ────────────────────────────────────────
+FROM python:3.11-slim AS runner
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+RUN playwright install chromium 2>/dev/null || true
 
 COPY . .
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl --fail http://localhost:8000/health || exit 1
 
-# Expose the port
 EXPOSE 8000
 
-# Run uvicorn server
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

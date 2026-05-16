@@ -6,14 +6,10 @@ Falls back to basic chat if RAG is unavailable.
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import List
-import os
 import json
 from . import schemas
 
 router = APIRouter()
-
-VLLM_API_BASE = os.getenv("VLLM_API_BASE", "http://localhost:11434/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "qwen2:0.5b")
 
 # Fallback system prompt (used only if RAG pipeline fails)
 FALLBACK_SYSTEM_PROMPT = """

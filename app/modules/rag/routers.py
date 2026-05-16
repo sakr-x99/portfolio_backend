@@ -2,7 +2,7 @@
 RAG API Endpoints
 Provides HTTP endpoints for the RAG pipeline: chat, indexing, and health checks.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import List, Optional
 from . import pipeline, vector_store
@@ -38,33 +38,14 @@ class IndexResponse(BaseModel):
 @router.post("/chat", response_model=RAGChatResponse)
 async def rag_chat(request: RAGChatRequest):
     """
-    Main RAG chat endpoint.
-    Takes conversation messages, retrieves relevant context from Qdrant,
-    and generates a grounded answer using the LLM.
+    RAG chat endpoint — delegates to the unified AI chat system.
     """
+    from app.modules.ai.routers import _rag_chat
     try:
         if not request.messages:
             raise HTTPException(status_code=400, detail="No messages provided")
-
-        # Extract the latest user question
-        user_messages = [m for m in request.messages if m.role == "user"]
-        if not user_messages:
-            raise HTTPException(status_code=400, detail="No user message found")
-
-        question = user_messages[-1].content
-
-        # Build conversation history (everything except the last user message)
-        history = [{"role": m.role, "content": m.content} for m in request.messages[:-1]]
-
-        # Run RAG pipeline
-        result = await pipeline.generate_answer(question, history)
-
-        return RAGChatResponse(
-            content=result["content"],
-            sources=result.get("sources", []),
-            chunks_used=result.get("chunks_used", 0),
-        )
-
+        content = await _rag_chat(request)
+        return RAGChatResponse(content=content)
     except HTTPException:
         raise
     except Exception as e:
@@ -73,18 +54,13 @@ async def rag_chat(request: RAGChatRequest):
 
 
 @router.post("/index", response_model=IndexResponse)
-async def index_knowledge():
+async def index_knowledge(background_tasks: BackgroundTasks):
     """
-    Trigger full knowledge re-indexing.
+    Trigger full knowledge re-indexing (runs in background).
     Extracts data from DB → generates Markdown → chunks → embeds → indexes in Qdrant.
-    Call this after updating portfolio content in the admin panel.
     """
-    try:
-        result = pipeline.index_knowledge()
-        return IndexResponse(**result)
-    except Exception as e:
-        print(f"Indexing Error: {e}")
-        raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}")
+    background_tasks.add_task(pipeline.index_knowledge)
+    return IndexResponse(status="started", message="Indexing started in background")
 
 
 @router.get("/health")

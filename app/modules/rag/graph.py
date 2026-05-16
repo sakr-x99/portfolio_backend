@@ -84,7 +84,8 @@ def retrieve_node(state: RAGState) -> Dict:
     print(f"--- RETRIEVING CONTEXT ---")
     query = state["question"]
     query_embedding = embeddings.embed_query(query)
-    retrieved_chunks = vector_store.search(query_embedding, top_k=3) # Minimized context
+    from .config import TOP_K
+    retrieved_chunks = vector_store.search(query_embedding, top_k=TOP_K)
     return {
         "context": retrieved_chunks,
         "sources": list(set(c["source"] for c in retrieved_chunks))
@@ -233,5 +234,10 @@ def create_rag_graph():
     # Compile
     return workflow.compile()
 
-# Global graph instance
-rag_app = create_rag_graph()
+_rag_app_instance = None
+
+def get_rag_app():
+    global _rag_app_instance
+    if _rag_app_instance is None:
+        _rag_app_instance = create_rag_graph()
+    return _rag_app_instance

@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app.core.database import get_db
+from app.core.auth import get_current_user
 from . import models, schemas
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 @router.get("/internal-projects", response_model=List[schemas.InternalProjectResponse])
 def get_internal_projects(db: Session = Depends(get_db)):

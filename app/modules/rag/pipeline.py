@@ -82,7 +82,7 @@ def retrieve_context(query: str, top_k: int = 5) -> List[Dict]:
 # GENERATION PIPELINE
 # ═══════════════════════════════════════════════════════════════════════════════
 
-from .graph import rag_app
+from .graph import get_rag_app
 
 async def prepare_rag_state(
     question: str,
@@ -119,7 +119,8 @@ async def prepare_rag_state(
     rewrite_result = await rewrite_node(state)
     state.update(rewrite_result)
 
-    state["context"] = retrieve_context(state["question"], top_k=3)
+    from .config import TOP_K
+    state["context"] = retrieve_context(state["question"], top_k=TOP_K)
     state["sources"] = list(set(c["source"] for c in state["context"]))
 
     if state["intent"] == "hiring":
@@ -155,7 +156,7 @@ async def generate_answer(
         "summary": ""
     }
     
-    result = await rag_app.ainvoke(inputs)
+    result = await get_rag_app().ainvoke(inputs)
     
     return {
         "content": result["answer"],

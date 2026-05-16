@@ -1,33 +1,38 @@
 import time
-from collections import defaultdict
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
+from app.core.cache import get_redis
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, max_requests: int = 20, window_seconds: int = 60):
         super().__init__(app)
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self.requests: dict[str, list[float]] = defaultdict(list)
 
     async def dispatch(self, request: Request, call_next):
-        # Only rate limit AI and RAG chat endpoints
         path = request.url.path
-        if request.method == "POST" and ("/ai/" in path or "/rag/chat" in path):
+        is_write = request.method in ("POST", "PUT", "DELETE")
+        if is_write and ("/ai/" in path or "/rag/" in path or "/admin/" in path or "/public/" in path):
             client_ip = request.client.host if request.client else "unknown"
-            now = time.time()
-            window_start = now - self.window_seconds
+            now = int(time.time())
+            window_key = f"ratelimit:{client_ip}:{now // self.window_seconds}"
 
-            # Clean old entries
-            self.requests[client_ip] = [t for t in self.requests[client_ip] if t > window_start]
-
-            # Check limit
-            if len(self.requests[client_ip]) >= self.max_requests:
-                raise HTTPException(
-                    status_code=429,
-                    detail=f"Too many requests. Limit: {self.max_requests} requests per {self.window_seconds}s. Try again later."
-                )
-
-            self.requests[client_ip].append(now)
+            r = get_redis()
+            if r is not None:
+                try:
+                    count = r.incr(window_key)
+                    if count == 1:
+                        r.expire(window_key, self.window_seconds)
+                    if count > self.max_requests:
+                        raise HTTPException(
+                            status_code=429,
+                            detail=f"Too many requests. Limit: {self.max_requests} per {self.window_seconds}s."
+                        )
+                except HTTPException:
+                    raise
+                except Exception:
+                    pass
+            else:
+                pass
 
         return await call_next(request)

@@ -4,7 +4,10 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Portfolio API"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
-    BACKEND_CORS_ORIGINS: list[str] = ["*"]
+    BACKEND_CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "https://sakr-sandy.vercel.app",
+    ]
     
     # Database (Renamed to bypass auto-detection)
     DB_SERVER: str = "localhost"
@@ -21,8 +24,9 @@ class Settings(BaseSettings):
             return self.DATABASE_URL.replace("postgres://", "postgresql://", 1)
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_SERVER}/{self.DB_NAME}"
     
-    # JWT
-    SECRET_KEY: str = "YOUR_SUPER_SECRET_KEY_HERE_CHANGE_IN_PROD"
+    # Auth
+    ADMIN_PASSWORD: str = "admin"
+    SECRET_KEY: str = "CHANGE_ME_TO_A_RANDOM_SECRET_128_CHARS_LONG_IN_PROD"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 7 days
     
     # Cache (Supports both REDIS_URL and CACHE_URL for cloud compatibility)

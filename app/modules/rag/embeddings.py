@@ -1,7 +1,7 @@
 """
 Embeddings Module — Gemini Integration
 Generates vector embeddings using Google's Generative AI.
-Model: text-embedding-004 (768 dimensions)
+Model: gemini-embedding-2 (768 dimensions)
 """
 import google.generativeai as genai
 from typing import List

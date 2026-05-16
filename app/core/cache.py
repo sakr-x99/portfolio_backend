@@ -15,6 +15,7 @@ def get_redis() -> Optional[redis.Redis]:
                 socket_timeout=3,
                 socket_connect_timeout=3,
                 decode_responses=True,
+                max_connections=10,
             )
             _client.ping()
         except Exception:
@@ -41,19 +42,31 @@ def cached(ttl: int = 300):
             result = func(*args, **kwargs)
             try:
                 r.setex(key, ttl, json.dumps(result, default=str))
+                _track_key(r, func.__name__, key)
             except Exception:
                 pass
             return result
         return wrapper
     return decorator
 
+def _track_key(r, prefix: str, key: str):
+    set_key = f"cache_keys:{prefix}"
+    r.sadd(set_key, key)
+    r.expire(set_key, 86400)
+
 def invalidate_cache(prefix: str):
     r = get_redis()
     if r is None:
         return
     try:
-        for key in r.scan_iter(f"{prefix}:*"):
-            r.delete(key)
+        set_key = f"cache_keys:{prefix}"
+        keys = r.smembers(set_key)
+        if keys:
+            r.delete(*keys)
+            r.delete(set_key)
+        else:
+            for key in r.scan_iter(f"{prefix}:*"):
+                r.delete(key)
     except Exception:
         pass
 
