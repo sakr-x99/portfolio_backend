@@ -56,6 +56,8 @@ def root():
     return {"message": "Welcome to the Portfolio API Modular Monolith!"}
 
 @app.get("/health")
+@app.get("/kaithhealthcheck")
+@app.get("/kaithheathcheck")
 def health_check():
     return {"status": "ok"}
 
