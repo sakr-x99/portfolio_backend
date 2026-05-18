@@ -22,8 +22,17 @@ def get_redis():
             _client = None
     return _client
 
+def _safe_serialize(obj):
+    """Return a JSON-safe representation, skipping non-serializable objects."""
+    try:
+        return json.dumps(obj, default=str)
+    except (TypeError, ValueError):
+        return str(type(obj).__name__)
+
 def cache_key(prefix: str, *args, **kwargs) -> str:
-    raw = f"{prefix}:{json.dumps(args)}:{json.dumps(kwargs, sort_keys=True)}"
+    safe_args = [_safe_serialize(a) for a in args if not hasattr(a, 'execute')]
+    safe_kwargs = {k: _safe_serialize(v) for k, v in kwargs.items() if k != 'db'}
+    raw = f"{prefix}:{safe_args}:{safe_kwargs}"
     return f"{prefix}:{hashlib.md5(raw.encode()).hexdigest()}"
 
 def cached(ttl: int = 300):
@@ -34,7 +43,7 @@ def cached(ttl: int = 300):
             r = get_redis()
             if r is None:
                 return func(*args, **kwargs)
-            key = cache_key(func.__name__, *args, **kwargs)
+            key = cache_key(func.__name__)
             try:
                 cached = r.get(key)
                 if cached is not None:
