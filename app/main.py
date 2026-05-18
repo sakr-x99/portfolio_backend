@@ -58,13 +58,13 @@ def root():
 def health_check():
     return {"status": "ok"}
 
-@app.on_event("startup")
-async def startup_event():
-    print(f"🚀 Starting {settings.PROJECT_NAME} v{settings.VERSION}...")
+async def init_services():
+    import asyncio
+    print(f"🚀 [BG] Starting {settings.PROJECT_NAME} v{settings.VERSION} service initializations...")
     
     # 1. Database Initialization & Migrations
     try:
-        print("  → Initializing Database & Tables...")
+        print("  → [BG] Initializing Database & Tables...")
         from app.core.database import engine, Base
         from sqlalchemy import text
         # Import all models to ensure they are registered
@@ -89,32 +89,37 @@ async def startup_event():
                 conn.execute(text("ALTER TABLE public_projects ADD COLUMN content TEXT"))
                 conn.commit()
         
-        print("  ✓ Database Initialization: OK")
+        print("  ✓ [BG] Database Initialization: OK")
     except Exception as e:
-        print(f"  ⚠ Database Initialization FAILED: {e}")
+        print(f"  ⚠ [BG] Database Initialization FAILED: {e}")
 
     # 2. Redis Connection Check
     try:
         import redis
         r = redis.from_url(settings.REDIS_CONNECTION_URL, socket_timeout=5)
         r.ping()
-        print("  ✓ Redis connection: OK")
+        print("  ✓ [BG] Redis connection: OK")
     except Exception as e:
-        print(f"  ⚠ Redis connection: FAILED - {e}")
+        print(f"  ⚠ [BG] Redis connection: FAILED - {e}")
 
     # 3. Qdrant Connection Check
-    from app.modules.rag.vector_store import ensure_collection
     try:
+        from app.modules.rag.vector_store import ensure_collection
         ensure_collection()
-        print("  ✓ RAG Vector Store initialized")
+        print("  ✓ [BG] RAG Vector Store initialized")
     except Exception as e:
-        print(f"  ⚠ RAG Initialization Warning: {e}")
+        print(f"  ⚠ [BG] RAG Initialization Warning: {e}")
 
     # 4. Start Background Schedulers
     try:
         from app.modules.github_trends.tasks import setup_github_trends_scheduler
         setup_github_trends_scheduler()
-        print("  ✓ GitHub Trends Scheduler started")
+        print("  ✓ [BG] GitHub Trends Scheduler started")
     except Exception as e:
-        print(f"  ⚠ Scheduler Initialization FAILED: {e}")
+        print(f"  ⚠ [BG] Scheduler Initialization FAILED: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    import asyncio
+    asyncio.create_task(init_services())
 
