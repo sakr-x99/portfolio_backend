@@ -1,4 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+import re
+
 from app.core.config import settings
 
 app = FastAPI(
@@ -6,11 +10,6 @@ app = FastAPI(
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
-
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Response
-from starlette.middleware.base import BaseHTTPMiddleware
-import re
 
 class CacheControlMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -36,19 +35,7 @@ app.add_middleware(CacheControlMiddleware)
 from app.core.rate_limit import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware, max_requests=20, window_seconds=60)
 
-from app.modules.public_portfolio.routers import router as public_router
-from app.modules.biz_management.routers import router as biz_router
-from app.modules.ai.routers import router as ai_router
-from app.modules.rag.routers import router as rag_router
-from app.modules.github_trends.router import router as trends_router
-from app.modules.auth.routers import router as auth_router
-
-app.include_router(public_router, prefix=f"{settings.API_V1_STR}/public", tags=["Public Portfolio"])
-app.include_router(biz_router, prefix=f"{settings.API_V1_STR}/admin", tags=["Business Management"])
-app.include_router(ai_router, prefix=f"{settings.API_V1_STR}/ai", tags=["AI Integration"])
-app.include_router(rag_router, prefix=f"{settings.API_V1_STR}/rag", tags=["RAG Pipeline"])
-app.include_router(trends_router, prefix=f"{settings.API_V1_STR}/trends", tags=["GitHub Trends"])
-app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["Auth"])
+# ── Instant endpoints (available before heavy imports) ──────────────
 
 @app.get("/")
 def root():
@@ -58,68 +45,86 @@ def root():
 def health_check():
     return {"status": "ok"}
 
-async def init_services():
-    import asyncio
-    print(f"🚀 [BG] Starting {settings.PROJECT_NAME} v{settings.VERSION} service initializations...")
-    
-    # 1. Database Initialization & Migrations
+# ── Lazy initialization (runs AFTER uvicorn binds the port) ─────────
+
+def _register_routers():
+    """Import and register all routers. Heavy imports happen here."""
+    from app.modules.public_portfolio.routers import router as public_router
+    from app.modules.biz_management.routers import router as biz_router
+    from app.modules.ai.routers import router as ai_router
+    from app.modules.rag.routers import router as rag_router
+    from app.modules.github_trends.router import router as trends_router
+    from app.modules.auth.routers import router as auth_router
+
+    app.include_router(public_router, prefix=f"{settings.API_V1_STR}/public", tags=["Public Portfolio"])
+    app.include_router(biz_router, prefix=f"{settings.API_V1_STR}/admin", tags=["Business Management"])
+    app.include_router(ai_router, prefix=f"{settings.API_V1_STR}/ai", tags=["AI Integration"])
+    app.include_router(rag_router, prefix=f"{settings.API_V1_STR}/rag", tags=["RAG Pipeline"])
+    app.include_router(trends_router, prefix=f"{settings.API_V1_STR}/trends", tags=["GitHub Trends"])
+    app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["Auth"])
+    print("  ✓ All routers registered")
+
+async def _init_services():
+    """Initialize database, cache, vector store, and schedulers."""
+    print(f"🚀 Starting {settings.PROJECT_NAME} v{settings.VERSION} service init...")
+
+    # 1. Database
     try:
-        print("  → [BG] Initializing Database & Tables...")
         from app.core.database import engine, Base
         from sqlalchemy import text
-        # Import all models to ensure they are registered
-        from app.modules.public_portfolio import models as public_models
-        from app.modules.biz_management import models as biz_models
-        from app.modules.github_trends import models as trends_models
-        
-        # Create tables
+        from app.modules.public_portfolio import models as _
+        from app.modules.biz_management import models as __
+        from app.modules.github_trends import models as ___
         Base.metadata.create_all(bind=engine)
-        
-        # Manual Migrations
         with engine.connect() as conn:
-            # Check if gradient exists
-            result = conn.execute(text("SELECT 1 FROM information_schema.columns WHERE table_name='public_projects' AND column_name='gradient'"))
-            if not result.fetchone():
-                conn.execute(text("ALTER TABLE public_projects ADD COLUMN gradient VARCHAR"))
-                conn.commit()
-                
-            # Check if content exists
-            result = conn.execute(text("SELECT 1 FROM information_schema.columns WHERE table_name='public_projects' AND column_name='content'"))
-            if not result.fetchone():
-                conn.execute(text("ALTER TABLE public_projects ADD COLUMN content TEXT"))
-                conn.commit()
-        
-        print("  ✓ [BG] Database Initialization: OK")
+            for col in ["gradient", "content"]:
+                r = conn.execute(text(f"SELECT 1 FROM information_schema.columns WHERE table_name='public_projects' AND column_name='{col}'"))
+                if not r.fetchone():
+                    col_type = "VARCHAR" if col == "gradient" else "TEXT"
+                    conn.execute(text(f"ALTER TABLE public_projects ADD COLUMN {col} {col_type}"))
+                    conn.commit()
+        print("  ✓ Database: OK")
     except Exception as e:
-        print(f"  ⚠ [BG] Database Initialization FAILED: {e}")
+        print(f"  ⚠ Database: {e}")
 
-    # 2. Redis Connection Check
+    # 2. Redis
     try:
         import redis
         r = redis.from_url(settings.REDIS_CONNECTION_URL, socket_timeout=5)
         r.ping()
-        print("  ✓ [BG] Redis connection: OK")
+        print("  ✓ Redis: OK")
     except Exception as e:
-        print(f"  ⚠ [BG] Redis connection: FAILED - {e}")
+        print(f"  ⚠ Redis: {e}")
 
-    # 3. Qdrant Connection Check
+    # 3. Qdrant
     try:
         from app.modules.rag.vector_store import ensure_collection
         ensure_collection()
-        print("  ✓ [BG] RAG Vector Store initialized")
+        print("  ✓ Qdrant: OK")
     except Exception as e:
-        print(f"  ⚠ [BG] RAG Initialization Warning: {e}")
+        print(f"  ⚠ Qdrant: {e}")
 
-    # 4. Start Background Schedulers
+    # 4. Schedulers
     try:
         from app.modules.github_trends.tasks import setup_github_trends_scheduler
         setup_github_trends_scheduler()
-        print("  ✓ [BG] GitHub Trends Scheduler started")
+        print("  ✓ Scheduler: OK")
     except Exception as e:
-        print(f"  ⚠ [BG] Scheduler Initialization FAILED: {e}")
+        print(f"  ⚠ Scheduler: {e}")
+
+    print("✅ All services initialized")
+
+async def _lazy_init():
+    """Run heavy initialization in background after uvicorn is already listening."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    # Run heavy imports in thread pool so event loop stays responsive
+    await loop.run_in_executor(None, _register_routers)
+    # Then init services
+    await _init_services()
 
 @app.on_event("startup")
 async def startup_event():
     import asyncio
-    asyncio.create_task(init_services())
-
+    # Fire-and-forget: uvicorn starts listening IMMEDIATELY
+    asyncio.create_task(_lazy_init())
