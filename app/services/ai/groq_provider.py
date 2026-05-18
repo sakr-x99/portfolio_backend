@@ -1,16 +1,23 @@
 from typing import List, Dict, Any
-from groq import AsyncGroq
 from .base import BaseAIProvider
 from app.core.config import settings
 
 class GroqProvider(BaseAIProvider):
     def __init__(self, api_key: str = None, model: str = None):
-        self.client = AsyncGroq(api_key=api_key or settings.GROQ_API_KEY)
+        self.api_key = api_key or settings.GROQ_API_KEY
         self.model = model or settings.GROQ_MODEL
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            from groq import AsyncGroq
+            self._client = AsyncGroq(api_key=self.api_key)
+        return self._client
 
     async def generate(self, messages: List[Dict[str, str]], **kwargs) -> str:
         try:
-            completion = await self.client.chat.completions.create(
+            client = self._get_client()
+            completion = await client.chat.completions.create(
                 model=kwargs.get("model", self.model),
                 messages=messages,
                 temperature=kwargs.get("temperature", 0.7),
@@ -22,7 +29,8 @@ class GroqProvider(BaseAIProvider):
 
     async def generate_stream(self, messages: List[Dict[str, str]], **kwargs):
         try:
-            stream = await self.client.chat.completions.create(
+            client = self._get_client()
+            stream = await client.chat.completions.create(
                 model=kwargs.get("model", self.model),
                 messages=messages,
                 temperature=kwargs.get("temperature", 0.7),

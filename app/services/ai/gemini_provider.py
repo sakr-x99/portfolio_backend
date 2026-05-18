@@ -1,4 +1,3 @@
-import google.generativeai as genai
 from typing import List, Dict, Any
 from .base import BaseAIProvider
 from app.core.config import settings
@@ -7,11 +6,19 @@ class GeminiProvider(BaseAIProvider):
     def __init__(self, api_key: str = None, model: str = None):
         self.api_key = api_key or settings.GEMINI_API_KEY
         self.model_name = model or settings.GEMINI_MODEL
-        if self.api_key:
-            genai.configure(api_key=self.api_key)
+        self._genai = None
+
+    def _get_genai(self):
+        if self._genai is None:
+            import google.generativeai as genai
+            if self.api_key:
+                genai.configure(api_key=self.api_key)
+            self._genai = genai
+        return self._genai
 
     async def generate(self, messages: List[Dict[str, str]], **kwargs) -> str:
         try:
+            genai = self._get_genai()
             model_to_use = kwargs.get("model", self.model_name)
             model = genai.GenerativeModel(model_to_use)
             
@@ -46,6 +53,7 @@ class GeminiProvider(BaseAIProvider):
 
     async def generate_stream(self, messages: List[Dict[str, str]], **kwargs):
         try:
+            genai = self._get_genai()
             model_to_use = kwargs.get("model", self.model_name)
             model = genai.GenerativeModel(model_to_use)
             contents = []

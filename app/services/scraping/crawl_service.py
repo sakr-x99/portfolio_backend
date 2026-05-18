@@ -1,5 +1,4 @@
 import asyncio
-from crawl4ai import AsyncWebCrawler
 from typing import Optional, Dict, Any
 
 class CrawlService:
@@ -8,6 +7,7 @@ class CrawlService:
 
     async def get_crawler(self):
         if self.crawler is None:
+            from crawl4ai import AsyncWebCrawler
             self.crawler = AsyncWebCrawler(verbose=True)
             await self.crawler.__aenter__()
         return self.crawler

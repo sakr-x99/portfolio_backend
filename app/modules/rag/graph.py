@@ -2,11 +2,11 @@ import json
 import asyncio
 from datetime import datetime
 from typing import List, Dict, TypedDict
-from langgraph.graph import StateGraph, START, END
-from app.modules.biz_management.models import Lead
-from app.core.database import SessionLocal
-from app.services.ai.manager import ai_manager
 from . import vector_store, prompt, embeddings
+
+def _get_ai_manager():
+    from app.services.ai.manager import ai_manager
+    return ai_manager
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STATE DEFINITION
@@ -46,7 +46,7 @@ async def classify_intent_node(state: RAGState) -> Dict:
     messages.extend(history[-4:]) # More context
     messages.append({"role": "user", "content": question})
     
-    intent_raw = await ai_manager.generate(
+    intent_raw = await _get_ai_manager().generate(
         messages=messages, 
         temperature=0.0, 
         max_tokens=10
@@ -72,7 +72,7 @@ async def rewrite_node(state: RAGState) -> Dict:
     for msg in history[-3:]: messages.append(msg)
     messages.append({"role": "user", "content": question})
     
-    rewritten_query = await ai_manager.generate(
+    rewritten_query = await _get_ai_manager().generate(
         messages=messages, 
         temperature=0.0, 
         max_tokens=50
@@ -110,7 +110,7 @@ async def lead_capture_node(state: RAGState) -> Dict:
     messages.extend(state["history"][-6:])
     messages.append({"role": "user", "content": state["question"]})
     
-    extracted_str = await ai_manager.generate(messages=messages, temperature=0.0, max_tokens=300)
+    extracted_str = await _get_ai_manager().generate(messages=messages, temperature=0.0, max_tokens=300)
     
     try:
         json_str = extracted_str.strip().replace("```json", "").replace("```", "").strip()
@@ -125,6 +125,8 @@ async def lead_capture_node(state: RAGState) -> Dict:
             print(f"  → Saving lead in DB...")
 
             def _save_lead_sync(ld, question, summary):
+                from app.core.database import SessionLocal
+                from app.modules.biz_management.models import Lead
                 db = SessionLocal()
                 try:
                     new_lead = Lead(
@@ -187,7 +189,7 @@ async def generate_node(state: RAGState) -> Dict:
     messages[0]["content"] += system_add
     
     # Call AI Manager
-    answer = await ai_manager.generate(messages=messages, temperature=0.3, max_tokens=1024)
+    answer = await _get_ai_manager().generate(messages=messages, temperature=0.3, max_tokens=1024)
     return {"answer": answer}
 
 async def summarize_node(state: RAGState) -> Dict:
@@ -200,7 +202,7 @@ async def summarize_node(state: RAGState) -> Dict:
     messages = [{"role": "system", "content": summary_prompt}]
     messages.extend(history[-10:]) # Summarize last 10 turns
     
-    summary = await ai_manager.generate(
+    summary = await _get_ai_manager().generate(
         messages=messages, 
         temperature=0.3, 
         max_tokens=150
@@ -212,6 +214,7 @@ async def summarize_node(state: RAGState) -> Dict:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def create_rag_graph():
+    from langgraph.graph import StateGraph, START, END
     workflow = StateGraph(RAGState)
     
     # Add nodes

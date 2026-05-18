@@ -3,27 +3,28 @@ Vector Store — Qdrant Integration
 Handles collection management, document indexing, and semantic similarity search.
 """
 from typing import List, Dict, Optional
-from qdrant_client import QdrantClient
-from qdrant_client.models import (
-    Distance,
-    VectorParams,
-    PointStruct,
-    Filter,
-    FieldCondition,
-    MatchValue,
-)
 from . import config
 
 # Lazy-init client
-_client: Optional[QdrantClient] = None
+_client = None
 
 
-def _get_client() -> QdrantClient:
+def _get_qdrant():
+    """Lazy-import qdrant_client models."""
+    from qdrant_client import QdrantClient
+    from qdrant_client.models import (
+        Distance, VectorParams, PointStruct,
+        Filter, FieldCondition, MatchValue,
+    )
+    return QdrantClient, Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
+
+
+def _get_client():
     """Get or create the Qdrant client (supports both local and cloud)."""
     global _client
     if _client is None:
+        QdrantClient = _get_qdrant()[0]
         if config.QDRANT_API_KEY:
-            # Qdrant Cloud — authenticated connection
             _client = QdrantClient(
                 url=config.QDRANT_URL,
                 api_key=config.QDRANT_API_KEY,
@@ -31,7 +32,6 @@ def _get_client() -> QdrantClient:
             )
             print(f"✓ Qdrant Cloud connected: {config.QDRANT_URL}")
         else:
-            # Local Qdrant
             _client = QdrantClient(url=config.QDRANT_URL, timeout=30)
             print(f"✓ Qdrant Local connected: {config.QDRANT_URL}")
     return _client
@@ -42,6 +42,7 @@ def ensure_collection():
     Create the collection if it doesn't exist.
     Recreates it if dimensions mismatch (e.g. model change).
     """
+    _, Distance, VectorParams, *_ = _get_qdrant()
     client = _get_client()
     collection_name = config.QDRANT_COLLECTION
 
@@ -68,8 +69,8 @@ def ensure_collection():
 def index_chunks(chunks: List[Dict], embeddings: List[List[float]]):
     """
     Upsert chunks with their embeddings into Qdrant.
-    Each chunk becomes a point with its embedding vector and metadata payload.
     """
+    _, _, _, PointStruct, *_ = _get_qdrant()
     client = _get_client()
     collection_name = config.QDRANT_COLLECTION
 
@@ -89,7 +90,6 @@ def index_chunks(chunks: List[Dict], embeddings: List[List[float]]):
             )
         )
 
-    # Upsert in batches of 100
     batch_size = 100
     for batch_start in range(0, len(points), batch_size):
         batch = points[batch_start:batch_start + batch_size]
@@ -106,13 +106,12 @@ def search(
 ) -> List[Dict]:
     """
     Perform semantic similarity search in Qdrant.
-    Returns ranked chunks with scores.
     """
+    _, _, _, _, Filter, FieldCondition, MatchValue = _get_qdrant()
     client = _get_client()
     top_k = top_k or config.TOP_K
     score_threshold = score_threshold or config.SCORE_THRESHOLD
 
-    # Optional source filter (e.g. search only in "projects" or "skills")
     search_filter = None
     if source_filter:
         search_filter = Filter(

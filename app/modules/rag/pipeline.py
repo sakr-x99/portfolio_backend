@@ -7,7 +7,6 @@ import os
 from typing import List, Dict
 
 from . import knowledge_extractor, chunker, embeddings, vector_store, prompt
-from app.services.ai.manager import ai_manager
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -82,7 +81,6 @@ def retrieve_context(query: str, top_k: int = 5) -> List[Dict]:
 # GENERATION PIPELINE
 # ═══════════════════════════════════════════════════════════════════════════════
 
-from .graph import get_rag_app
 
 async def prepare_rag_state(
     question: str,
@@ -156,6 +154,7 @@ async def generate_answer(
         "summary": ""
     }
     
+    from .graph import get_rag_app
     result = await get_rag_app().ainvoke(inputs)
     
     return {
