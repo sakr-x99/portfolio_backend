@@ -62,10 +62,15 @@ def health_check():
 @app.on_event("startup")
 async def startup_event():
     import asyncio
-    asyncio.create_task(_init_services())
+    asyncio.create_task(_bg_init())
 
-async def _init_services():
-    """Background service initialization (DB, Redis, Qdrant, Schedulers)."""
+async def _bg_init():
+    """Run all blocking init in a thread so event loop stays free."""
+    import asyncio
+    await asyncio.to_thread(_sync_init_all)
+
+def _sync_init_all():
+    """All blocking service initialization — runs in a separate OS thread."""
     print(f"🚀 Starting {settings.PROJECT_NAME} v{settings.VERSION} service init...")
 
     # 1. Database
@@ -113,3 +118,4 @@ async def _init_services():
         print(f"  ⚠ Scheduler: {e}")
 
     print("✅ All services initialized")
+
