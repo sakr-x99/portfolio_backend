@@ -1,4 +1,3 @@
-from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.config import settings
 
 class MongoDBClient:
@@ -7,6 +6,7 @@ class MongoDBClient:
         self.db = None
 
     def connect(self):
+        from motor.motor_asyncio import AsyncIOMotorClient
         if settings.MONGODB_URL:
             self.client = AsyncIOMotorClient(settings.MONGODB_URL)
             # Extract DB name from URL or use default

@@ -1,15 +1,15 @@
 import json
 import hashlib
 from typing import Optional, Any, Callable
-import redis
 from app.core.config import settings
 
-_client: Optional[redis.Redis] = None
+_client = None
 
-def get_redis() -> Optional[redis.Redis]:
+def get_redis():
     global _client
     if _client is None:
         try:
+            import redis
             _client = redis.from_url(
                 settings.REDIS_CONNECTION_URL,
                 socket_timeout=3,
