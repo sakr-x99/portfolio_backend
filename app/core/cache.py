@@ -28,6 +28,8 @@ def cache_key(prefix: str, *args, **kwargs) -> str:
 
 def cached(ttl: int = 300):
     def decorator(func: Callable):
+        import functools
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             r = get_redis()
             if r is None:
