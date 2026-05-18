@@ -63,61 +63,12 @@ def health_check():
 
 @app.on_event("startup")
 async def startup_event():
-    import asyncio
-    asyncio.create_task(_bg_init())
-
-async def _bg_init():
-    """Run all blocking init in a thread so event loop stays free."""
-    import asyncio
-    await asyncio.to_thread(_sync_init_all)
-
-def _sync_init_all():
-    """All blocking service initialization — runs in a separate OS thread."""
-    print(f"🚀 Starting {settings.PROJECT_NAME} v{settings.VERSION} service init...")
-
-    # 1. Database
-    try:
-        from app.core.database import engine, Base
-        from sqlalchemy import text
-        from app.modules.public_portfolio import models as _
-        from app.modules.biz_management import models as __
-        from app.modules.github_trends import models as ___
-        Base.metadata.create_all(bind=engine)
-        with engine.connect() as conn:
-            for col in ["gradient", "content"]:
-                r = conn.execute(text(f"SELECT 1 FROM information_schema.columns WHERE table_name='public_projects' AND column_name='{col}'"))
-                if not r.fetchone():
-                    col_type = "VARCHAR" if col == "gradient" else "TEXT"
-                    conn.execute(text(f"ALTER TABLE public_projects ADD COLUMN {col} {col_type}"))
-                    conn.commit()
-        print("  ✓ Database: OK")
-    except Exception as e:
-        print(f"  ⚠ Database: {e}")
-
-    # 2. Redis
-    try:
-        import redis
-        r = redis.from_url(settings.REDIS_CONNECTION_URL, socket_timeout=5)
-        r.ping()
-        print("  ✓ Redis: OK")
-    except Exception as e:
-        print(f"  ⚠ Redis: {e}")
-
-    # 3. Qdrant
-    try:
-        from app.modules.rag.vector_store import ensure_collection
-        ensure_collection()
-        print("  ✓ Qdrant: OK")
-    except Exception as e:
-        print(f"  ⚠ Qdrant: {e}")
-
-    # 4. Schedulers
+    print(f"🚀 Starting {settings.PROJECT_NAME} v{settings.VERSION}...")
     try:
         from app.modules.github_trends.tasks import setup_github_trends_scheduler
         setup_github_trends_scheduler()
-        print("  ✓ Scheduler: OK")
+        print("  ✓ Scheduler: Started")
     except Exception as e:
-        print(f"  ⚠ Scheduler: {e}")
-
-    print("✅ All services initialized")
+        print(f"  ⚠ Scheduler: Failed to start: {e}")
+    print("✅ Startup complete")
 
