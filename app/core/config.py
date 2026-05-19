@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: list[str] = [
         "http://localhost:3000",
         "https://sakr-sandy.vercel.app",
+        "https://sakr-iota.vercel.app",
     ]
     
     # Database (Renamed to bypass auto-detection)
