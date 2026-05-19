@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-scraping.txt .
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-scraping.txt
 
 # ── Runtime Stage ────────────────────────────────────────
 FROM python:3.11-slim AS runner

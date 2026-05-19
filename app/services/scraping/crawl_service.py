@@ -7,9 +7,13 @@ class CrawlService:
 
     async def get_crawler(self):
         if self.crawler is None:
-            from crawl4ai import AsyncWebCrawler
-            self.crawler = AsyncWebCrawler(verbose=True)
-            await self.crawler.__aenter__()
+            try:
+                from crawl4ai import AsyncWebCrawler
+                self.crawler = AsyncWebCrawler(verbose=True)
+                await self.crawler.__aenter__()
+            except ImportError:
+                print("Warning: crawl4ai is not installed in this environment. Scraping is disabled.")
+                return None
         return self.crawler
 
     async def crawl_url(self, url: str) -> Optional[str]:
@@ -18,6 +22,9 @@ class CrawlService:
         """
         try:
             crawler = await self.get_crawler()
+            if crawler is None:
+                print(f"Skipping crawl for {url}: crawl4ai is not installed.")
+                return None
             result = await crawler.arun(url=url)
             return result.markdown
         except Exception as e:

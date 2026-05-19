@@ -30,8 +30,6 @@ supabase>=2.5.1
 # Scraping
 beautifulsoup4>=4.12.3
 lxml>=5.3.0
-crawl4ai==0.8.6
-playwright>=1.49.0
 
 # Scheduling
 apscheduler==3.10.4
