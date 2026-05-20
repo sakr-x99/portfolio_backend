@@ -1,23 +1,26 @@
 """
-Embeddings Module — FastEmbed (ONNX-based, local, no external API)
-Uses sentence-transformers models via Qdrant's FastEmbed (no PyTorch needed).
+Embeddings Module — HuggingFace Inference API
+Generates embeddings via free HuggingFace Inference API (no API key, no model download).
 """
 from typing import List
-from . import config
+import httpx
 
-_client = None
-
-def _get_client():
-    global _client
-    if _client is None:
-        from fastembed import TextEmbedding
-        _client = TextEmbedding(model_name=config.EMBEDDING_MODEL)
-    return _client
+HF_API_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 
 def embed_texts(texts: List[str]) -> List[List[float]]:
-    client = _get_client()
-    return [list(e) for e in client.embed(texts)]
+    resp = httpx.post(
+        HF_API_URL,
+        json={"inputs": texts, "options": {"wait_for_model": True}},
+        timeout=120,
+    )
+    resp.raise_for_status()
+    return resp.json()
 
 def embed_query(query: str) -> List[float]:
-    client = _get_client()
-    return list(next(client.embed([query])))
+    resp = httpx.post(
+        HF_API_URL,
+        json={"inputs": [query], "options": {"wait_for_model": True}},
+        timeout=120,
+    )
+    resp.raise_for_status()
+    return resp.json()[0]

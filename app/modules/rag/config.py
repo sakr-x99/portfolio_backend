@@ -11,7 +11,7 @@ QDRANT_COLLECTION = settings.QDRANT_COLLECTION
 
 # ── Embedding Model ──────────────────────────────────────────────────────────
 # Using BAAI/bge-small-en-v1.5 via FastEmbed (local ONNX, no API key needed)
-EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIMENSIONS = 384
 
 # ── Chunking ─────────────────────────────────────────────────────────────────
