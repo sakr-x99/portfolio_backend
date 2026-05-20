@@ -23,7 +23,7 @@ CHUNK_OVERLAP = 200       # Overlap between chunks for context continuity
 
 # ── Retrieval ────────────────────────────────────────────────────────────────
 TOP_K = 3                 # Number of chunks to retrieve
-SCORE_THRESHOLD = 0.5     # Minimum similarity score (0-1) — was 0.3, raised to reduce noise
+SCORE_THRESHOLD = 0.35    # Minimum similarity score — lowered for cross-lingual (Arabic query → English content)
 
 # ── Knowledge Base ───────────────────────────────────────────────────────────
 # On Vercel/serverless, only /tmp/ is writable. On local, use a persistent dir.
