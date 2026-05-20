@@ -64,6 +64,19 @@ def health_check():
 @app.on_event("startup")
 async def startup_event():
     print(f"🚀 Starting {settings.PROJECT_NAME} v{settings.VERSION}...")
+    
+    # Database migration: Alter Experience columns start_date and end_date from DATE to VARCHAR
+    try:
+        from sqlalchemy import text
+        from app.core.database import engine
+        with engine.begin() as conn:
+            print("  🔨 Running DB migration: Altering experience date columns to VARCHAR...")
+            conn.execute(text("ALTER TABLE public_experiences ALTER COLUMN start_date TYPE VARCHAR(255) USING start_date::varchar;"))
+            conn.execute(text("ALTER TABLE public_experiences ALTER COLUMN end_date TYPE VARCHAR(255) USING end_date::varchar;"))
+            print("  ✓ DB migration: Completed successfully")
+    except Exception as db_err:
+        print(f"  ⚠ DB migration: Failed (this might be normal if already converted): {db_err}")
+
     try:
         from app.modules.github_trends.tasks import setup_github_trends_scheduler
         setup_github_trends_scheduler()
