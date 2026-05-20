@@ -21,8 +21,12 @@ def _get_lock():
     return _client_lock
 
 def _get_cache_dir() -> str:
-    """Return a persistent cache directory for the embedding model."""
-    cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".embedding_cache")
+    """Return a writable cache directory for the embedding model."""
+    _is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+    if _is_serverless:
+        cache_dir = os.path.join(os.environ.get("TMPDIR", "/tmp"), "fastembed_cache")
+    else:
+        cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".embedding_cache")
     os.makedirs(cache_dir, exist_ok=True)
     return cache_dir
 
