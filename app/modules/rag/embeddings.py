@@ -1,26 +1,21 @@
 """
 Embeddings Module — HuggingFace Inference API
-Generates embeddings via free HuggingFace Inference API (no API key, no model download).
+Generates embeddings via free HuggingFace Inference API.
 """
+import json
+import urllib.request
 from typing import List
-import httpx
 
-HF_API_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+HF_API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
 
 def embed_texts(texts: List[str]) -> List[List[float]]:
-    resp = httpx.post(
-        HF_API_URL,
-        json={"inputs": texts, "options": {"wait_for_model": True}},
-        timeout=120,
-    )
-    resp.raise_for_status()
-    return resp.json()
+    data = json.dumps({"inputs": texts}).encode("utf-8")
+    req = urllib.request.Request(HF_API_URL, data=data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        return json.loads(resp.read())
 
 def embed_query(query: str) -> List[float]:
-    resp = httpx.post(
-        HF_API_URL,
-        json={"inputs": [query], "options": {"wait_for_model": True}},
-        timeout=120,
-    )
-    resp.raise_for_status()
-    return resp.json()[0]
+    data = json.dumps({"inputs": [query]}).encode("utf-8")
+    req = urllib.request.Request(HF_API_URL, data=data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        return json.loads(resp.read())[0]
