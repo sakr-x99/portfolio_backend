@@ -43,15 +43,3 @@ class Education(Base):
     id = Column(Integer, primary_key=True, index=True)
     institution = Column(String)
     degree = Column(String)
-
-class Article(Base):
-    __tablename__ = "public_articles"
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, index=True)
-    slug = Column(String, unique=True, index=True)
-    content = Column(Text)
-    summary = Column(Text)
-    category = Column(String)
-    image_url = Column(String, nullable=True)
-    published_date = Column(Date)
-    is_published = Column(Boolean, default=True)

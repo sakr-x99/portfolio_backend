@@ -14,7 +14,6 @@ skill_crud = CRUDBase(models.Skill, "get_skills")
 experience_crud = CRUDBase(models.Experience, "get_experiences")
 education_crud = CRUDBase(models.Education, "get_education")
 service_crud = CRUDBase(models.Service, "get_services")
-article_crud = CRUDBase(models.Article, "get_articles")
 
 # ── Projects ──────────────────────────────────────────────────────────────────
 @router.get("/projects", response_model=List[schemas.ProjectResponse])
@@ -105,25 +104,3 @@ def update_service(service_id: int, service: schemas.ServiceCreate, db: Session 
 @router.delete("/services/{service_id}", dependencies=[Depends(get_current_user)])
 def delete_service(service_id: int, db: Session = Depends(get_db)):
     return service_crud.delete(db, service_id)
-
-# ── Articles ──────────────────────────────────────────────────────────────────
-@router.get("/articles", response_model=List[schemas.ArticleResponse])
-@cached(ttl=120)
-def get_articles(db: Session = Depends(get_db)):
-    return article_crud.get_all(db)
-
-@router.get("/articles/{slug}", response_model=schemas.ArticleResponse)
-def get_article(slug: str, db: Session = Depends(get_db)):
-    article = db.query(models.Article).filter(models.Article.slug == slug).first()
-    if not article:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Article not found")
-    return article
-
-@router.post("/articles", response_model=schemas.ArticleResponse, dependencies=[Depends(get_current_user)])
-def create_article(article: schemas.ArticleCreate, db: Session = Depends(get_db)):
-    return article_crud.create(db, article, date_fields=["published_date"])
-
-@router.delete("/articles/{article_id}", dependencies=[Depends(get_current_user)])
-def delete_article(article_id: int, db: Session = Depends(get_db)):
-    return article_crud.delete(db, article_id)

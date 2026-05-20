@@ -16,7 +16,7 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
         response: Response = await call_next(request)
         if request.method == "GET":
             path = request.url.path
-            if re.search(r'/public/(projects|skills|experiences|education|services|articles)', path):
+            if re.search(r'/public/(projects|skills|experiences|education|services)', path):
                 response.headers["Cache-Control"] = "public, max-age=120, s-maxage=120, stale-while-revalidate=60"
             elif re.search(r'/public/', path):
                 response.headers["Cache-Control"] = "public, max-age=60, s-maxage=60"

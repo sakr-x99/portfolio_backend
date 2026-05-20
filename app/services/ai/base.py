@@ -1,18 +1,22 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, AsyncGenerator
+
+Message = Dict[str, str]
 
 class BaseAIProvider(ABC):
     @abstractmethod
-    async def generate(self, messages: List[Dict[str, str]], **kwargs) -> str:
-        """Generate a response from the AI provider."""
-        pass
+    async def generate(self, messages: List[Message], **kwargs: Any) -> str:
+        ...
 
     @abstractmethod
-    async def generate_stream(self, messages: List[Dict[str, str]], **kwargs):
-        """Generate a streaming response from the AI provider."""
-        pass
+    async def generate_stream(
+        self, messages: List[Message], **kwargs: Any
+    ) -> AsyncGenerator[str, None]:
+        ...
 
     @abstractmethod
     def get_name(self) -> str:
-        """Return the provider name."""
+        ...
+
+    async def close(self):
         pass

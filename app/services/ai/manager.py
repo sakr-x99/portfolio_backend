@@ -1,19 +1,27 @@
 import logging
-from typing import List, Dict, Any, Optional
-from .base import BaseAIProvider
+from typing import List, Dict, Any, Optional, AsyncGenerator
+from .base import BaseAIProvider, Message
 from .groq_provider import GroqProvider
 from .gemini_provider import GeminiProvider
+from .exceptions import (
+    AIProviderError,
+    APIKeyMissingError,
+    ProviderNotFoundError,
+    GenerationError,
+    StreamingError,
+    AllProvidersFailedError,
+)
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class AIManager:
-    def __init__(self, config_profile: str = "primary"):
-        """
-        Initialize AIManager with a specific configuration profile.
-        'primary' uses the standard keys.
-        'secondary' (or other) uses keys with '_2' suffix.
-        """
+    def __init__(
+        self,
+        providers: Dict[str, BaseAIProvider] | None = None,
+        config_profile: str = "primary",
+    ):
         if config_profile == "secondary":
             groq_key = settings.GROQ_API_KEY_2
             gemini_key = settings.GEMINI_API_KEY_2
@@ -29,69 +37,74 @@ class AIManager:
             self.primary = settings.PRIMARY_AI_PROVIDER
             self.fallback = settings.FALLBACK_PROVIDER
 
-        self.providers: Dict[str, BaseAIProvider] = {
-            "groq": GroqProvider(api_key=groq_key, model=groq_model),
-            "gemini": GeminiProvider(api_key=gemini_key, model=gemini_model)
-        }
+        if providers is not None:
+            self.providers = providers
+        else:
+            self.providers = {
+                "groq": GroqProvider(api_key=groq_key, model=groq_model),
+                "gemini": GeminiProvider(api_key=gemini_key, model=gemini_model),
+            }
 
-    async def generate(self, messages: List[Dict[str, str]], **kwargs) -> str:
-        # Check if a specific provider is requested
-        target_provider = kwargs.get("provider", self.primary)
-        
-        # Try requested provider
+    def register_provider(self, name: str, provider: BaseAIProvider):
+        self.providers[name] = provider
+        logger.info("Provider '%s' registered (%s)", name, provider.get_name())
+
+    def _resolve(self, name: str) -> BaseAIProvider:
+        provider = self.providers.get(name)
+        if not provider:
+            raise ProviderNotFoundError(name)
+        return provider
+
+    async def generate(self, messages: List[Message], **kwargs) -> str:
+        target = kwargs.pop("provider", self.primary)
+
         try:
-            provider = self.providers.get(target_provider)
-            if not provider:
-                raise Exception(f"Provider {target_provider} not found")
-            
+            provider = self._resolve(target)
+            logger.debug("Generating with provider: %s", provider.get_name())
             return await provider.generate(messages, **kwargs)
-        
-        except Exception as e:
-            logger.error(f"Primary AI provider ({self.primary}) failed: {str(e)}")
-            
-            # Try fallback provider
-            try:
-                fallback_provider = self.providers.get(self.fallback)
-                if not fallback_provider:
-                    raise Exception(f"Fallback provider {self.fallback} not found")
-                
-                logger.info(f"Switching to fallback AI provider: {self.fallback}")
-                return await fallback_provider.generate(messages, **kwargs)
-            
-            except Exception as fe:
-                logger.error(f"Fallback AI provider ({self.fallback}) failed: {str(fe)}")
-                raise Exception(f"All AI providers failed. Last error: {str(fe)}")
+        except (APIKeyMissingError, ProviderNotFoundError, GenerationError) as e:
+            logger.error("Primary provider '%s' failed: %s", target, e)
 
-    async def generate_stream(self, messages: List[Dict[str, str]], **kwargs):
-        # Try primary provider
         try:
-            provider = self.providers.get(self.primary)
-            if not provider:
-                raise Exception(f"Primary provider {self.primary} not found")
-            
-            logger.info(f"Streaming with primary AI provider: {self.primary}")
+            fallback = self._resolve(self.fallback)
+            logger.info("Falling back to provider: %s", self.fallback)
+            return await fallback.generate(messages, **kwargs)
+        except (APIKeyMissingError, ProviderNotFoundError, GenerationError) as fe:
+            logger.error("Fallback provider '%s' failed: %s", self.fallback, fe)
+            raise AllProvidersFailedError(self.primary, self.fallback, str(fe)) from fe
+
+    async def generate_stream(
+        self, messages: List[Message], **kwargs
+    ) -> AsyncGenerator[str, None]:
+        target = kwargs.pop("provider", self.primary)
+
+        try:
+            provider = self._resolve(target)
+            logger.debug("Streaming with provider: %s", provider.get_name())
             async for chunk in provider.generate_stream(messages, **kwargs):
                 yield chunk
-        
-        except Exception as e:
-            logger.error(f"Primary AI provider ({self.primary}) streaming failed: {str(e)}")
-            
-            # Try fallback provider
-            try:
-                fallback_provider = self.providers.get(self.fallback)
-                if not fallback_provider:
-                    raise Exception(f"Fallback provider {self.fallback} not found")
-                
-                logger.info(f"Switching stream to fallback AI provider: {self.fallback}")
-                async for chunk in fallback_provider.generate_stream(messages, **kwargs):
-                    yield chunk
-            
-            except Exception as fe:
-                logger.error(f"Fallback AI provider ({self.fallback}) streaming failed: {str(fe)}")
-                raise Exception(f"All AI providers failed during streaming. Last error: {str(fe)}")
+            return
+        except (APIKeyMissingError, ProviderNotFoundError, StreamingError) as e:
+            logger.error("Primary provider '%s' streaming failed: %s", target, e)
 
-# Main instance for Sakr AI (Primary Agent)
+        try:
+            fallback = self._resolve(self.fallback)
+            logger.info("Falling back stream to provider: %s", self.fallback)
+            async for chunk in fallback.generate_stream(messages, **kwargs):
+                yield chunk
+        except (APIKeyMissingError, ProviderNotFoundError, StreamingError) as fe:
+            logger.error("Fallback provider '%s' streaming failed: %s", self.fallback, fe)
+            raise AllProvidersFailedError(self.primary, self.fallback, str(fe)) from fe
+
+    async def close(self):
+        for name, provider in self.providers.items():
+            try:
+                await provider.close()
+                logger.debug("Closed provider: %s", name)
+            except Exception as e:
+                logger.warning("Error closing provider '%s': %s", name, e)
+
+
 ai_manager = AIManager(config_profile="primary")
 
-# Instance for GitHub Trends Agent (Secondary Agent)
 github_trends_ai = AIManager(config_profile="secondary")

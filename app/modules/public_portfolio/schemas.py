@@ -78,22 +78,3 @@ class ServiceResponse(ServiceBase):
     id: int
     class Config:
         from_attributes = True
-
-# --- Article Schemas ---
-class ArticleBase(BaseModel):
-    title: str
-    slug: str
-    content: str
-    summary: str
-    category: str
-    image_url: Optional[str] = None
-    published_date: str
-    is_published: bool = True
-
-class ArticleCreate(ArticleBase):
-    pass
-
-class ArticleResponse(ArticleBase):
-    id: int
-    class Config:
-        from_attributes = True

@@ -175,31 +175,6 @@ def extract_services(db: Session) -> str:
     return md
 
 
-def extract_articles(db: Session) -> str:
-    """Generate articles.md with blog content."""
-    articles = db.query(models.Article).filter(models.Article.is_published == True).all()
-    if not articles:
-        return "# Articles & Blog\n\nNo articles published yet.\n"
-
-    md = "# Articles & Insights\n\n"
-    md += f"Mohamed Sakr has published {len(articles)} articles.\n\n"
-
-    for article in articles:
-        md += f"## {article.title}\n\n"
-        if article.category:
-            md += f"**Category:** {article.category}\n\n"
-        if article.published_date:
-            md += f"**Published:** {article.published_date.strftime('%B %d, %Y')}\n\n"
-        if article.summary:
-            md += f"**Summary:** {article.summary}\n\n"
-        if article.content:
-            # Include the full content for RAG indexing
-            md += f"{article.content}\n\n"
-        md += "---\n\n"
-
-    return md
-
-
 def extract_all() -> dict[str, str]:
     """
     Main extraction function.
@@ -218,7 +193,6 @@ def extract_all() -> dict[str, str]:
             "education.md": extract_education,
             "projects.md": extract_projects,
             "services.md": extract_services,
-            "articles.md": extract_articles,
         }
 
         results = {}
