@@ -23,7 +23,7 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
         for t in texts
     ]
     response = _client.post(
-        f"{BASE_URL}/models/{config.EMBEDDING_MODEL}:batchEmbedContents",
+        f"{BASE_URL}/{config.EMBEDDING_MODEL}:batchEmbedContents",
         params={"key": settings.GEMINI_API_KEY},
         json={"requests": requests},
     )
@@ -36,7 +36,7 @@ def embed_query(query: str) -> List[float]:
     Generate embedding for a single search query using Gemini v1 API.
     """
     response = _client.post(
-        f"{BASE_URL}/models/{config.EMBEDDING_MODEL}:embedContent",
+        f"{BASE_URL}/{config.EMBEDDING_MODEL}:embedContent",
         params={"key": settings.GEMINI_API_KEY},
         json={
             "model": config.EMBEDDING_MODEL,
