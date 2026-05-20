@@ -1,23 +1,26 @@
 """
-Embeddings Module — HuggingFace Inference API
-Generates embeddings via free HuggingFace Inference API.
+Embeddings Module — FastEmbed (local ONNX embeddings)
+Downloads model to /tmp on first use; no external API calls at inference time.
 """
-import json
-import urllib.request
 from typing import List
+from . import config
 
-HF_API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+_client = None
 
-HEADERS = {"Content-Type": "application/json", "User-Agent": "Portfolio-RAG/1.0"}
-
-def _call_hf(texts) -> list:
-    data = json.dumps({"inputs": texts, "options": {"wait_for_model": True}}).encode()
-    req = urllib.request.Request(HF_API_URL, data=data, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        return json.loads(resp.read())
+def _get_client():
+    global _client
+    if _client is None:
+        from fastembed import TextEmbedding
+        _client = TextEmbedding(
+            model_name=config.EMBEDDING_MODEL,
+            cache_dir="/tmp/fastembed_cache",
+        )
+    return _client
 
 def embed_texts(texts: List[str]) -> List[List[float]]:
-    return _call_hf(texts)
+    client = _get_client()
+    return [list(e) for e in client.embed(texts)]
 
 def embed_query(query: str) -> List[float]:
-    return _call_hf([query])[0]
+    client = _get_client()
+    return list(next(client.embed([query])))
