@@ -2,7 +2,7 @@
 RAG API Endpoints
 Provides HTTP endpoints for the RAG pipeline: chat, indexing, and health checks.
 """
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from . import pipeline, vector_store
@@ -54,13 +54,25 @@ async def rag_chat(request: RAGChatRequest):
 
 
 @router.post("/index", response_model=IndexResponse)
-async def index_knowledge(background_tasks: BackgroundTasks):
+async def index_knowledge():
     """
-    Trigger full knowledge re-indexing (runs in background).
+    Trigger full knowledge re-indexing (runs synchronously).
     Extracts data from DB → generates Markdown → chunks → embeds → indexes in Qdrant.
+    NOTE: Runs synchronously because Vercel serverless kills background tasks.
     """
-    background_tasks.add_task(pipeline.index_knowledge)
-    return IndexResponse(status="started", message="Indexing started in background")
+    try:
+        result = pipeline.index_knowledge()
+        return IndexResponse(
+            status=result.get("status", "success"),
+            files_generated=result.get("files_generated", 0),
+            chunks_created=result.get("chunks_created", 0),
+            embeddings_generated=result.get("embeddings_generated", 0),
+            points_indexed=result.get("points_indexed", 0),
+            message="Indexing completed successfully"
+        )
+    except Exception as e:
+        print(f"Indexing Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}")
 
 
 @router.get("/health")
