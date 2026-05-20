@@ -95,7 +95,7 @@ def extract_experience(db: Session) -> str:
 
 def extract_education(db: Session) -> str:
     """Generate education.md with academic background."""
-    education = db.query(models.Education).order_by(models.Education.start_date.desc()).all()
+    education = db.query(models.Education).all()
     if not education:
         return "# Education\n\nNo education data available yet.\n"
 
