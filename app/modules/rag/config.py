@@ -10,9 +10,9 @@ QDRANT_API_KEY = settings.QDRANT_API_KEY
 QDRANT_COLLECTION = settings.QDRANT_COLLECTION
 
 # ── Embedding Model ──────────────────────────────────────────────────────────
-# Using Gemini text-embedding-004 (google.genai SDK)
-EMBEDDING_MODEL = "models/text-embedding-004"
-EMBEDDING_DIMENSIONS = 768
+# Using BAAI/bge-small-en-v1.5 via FastEmbed (local ONNX, no API key needed)
+EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+EMBEDDING_DIMENSIONS = 384
 
 # ── Chunking ─────────────────────────────────────────────────────────────────
 CHUNK_SIZE = 1500         # Characters per chunk

@@ -1,48 +1,23 @@
 """
-Embeddings Module — Gemini Integration
-Generates vector embeddings via the Gemini v1 REST API (httpx).
-Model: text-embedding-004 (768 dimensions)
+Embeddings Module — FastEmbed (ONNX-based, local, no external API)
+Uses sentence-transformers models via Qdrant's FastEmbed (no PyTorch needed).
 """
 from typing import List
-import httpx
 from . import config
-from app.core.config import settings
 
-BASE_URL = "https://generativelanguage.googleapis.com/v1"
-_client = httpx.Client(timeout=60)
+_client = None
+
+def _get_client():
+    global _client
+    if _client is None:
+        from fastembed import TextEmbedding
+        _client = TextEmbedding(model_name=config.EMBEDDING_MODEL)
+    return _client
 
 def embed_texts(texts: List[str]) -> List[List[float]]:
-    """
-    Generate embeddings for a batch of texts using Gemini v1 API.
-    """
-    requests = [
-        {
-            "model": config.EMBEDDING_MODEL,
-            "content": {"parts": [{"text": t}]},
-        }
-        for t in texts
-    ]
-    response = _client.post(
-        f"{BASE_URL}/{config.EMBEDDING_MODEL}:batchEmbedContents",
-        params={"key": settings.GEMINI_API_KEY_2 or settings.GEMINI_API_KEY},
-        json={"requests": requests},
-    )
-    response.raise_for_status()
-    data = response.json()
-    return [e["values"] for e in data["embeddings"]]
+    client = _get_client()
+    return [list(e) for e in client.embed(texts)]
 
 def embed_query(query: str) -> List[float]:
-    """
-    Generate embedding for a single search query using Gemini v1 API.
-    """
-    response = _client.post(
-        f"{BASE_URL}/{config.EMBEDDING_MODEL}:embedContent",
-        params={"key": settings.GEMINI_API_KEY_2 or settings.GEMINI_API_KEY},
-        json={
-            "model": config.EMBEDDING_MODEL,
-            "content": {"parts": [{"text": query}]},
-        },
-    )
-    response.raise_for_status()
-    data = response.json()
-    return data["embedding"]["values"]
+    client = _get_client()
+    return list(next(client.embed([query])))
