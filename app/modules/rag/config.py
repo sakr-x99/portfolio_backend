@@ -11,7 +11,7 @@ QDRANT_COLLECTION = settings.QDRANT_COLLECTION
 
 # ── Embedding Model ──────────────────────────────────────────────────────────
 # Using Gemini text-embedding-004 (google.genai SDK)
-EMBEDDING_MODEL = "models/text-embedding-004"
+EMBEDDING_MODEL = "models/embedding-001"
 EMBEDDING_DIMENSIONS = 768
 
 # ── Chunking ─────────────────────────────────────────────────────────────────
