@@ -10,8 +10,8 @@ QDRANT_API_KEY = settings.QDRANT_API_KEY
 QDRANT_COLLECTION = settings.QDRANT_COLLECTION
 
 # ── Embedding Model ──────────────────────────────────────────────────────────
-# Using Gemini embedding-001 (compatible with deprecated google.generativeai)
-EMBEDDING_MODEL = "models/embedding-001"
+# Using Gemini text-embedding-004 (google.genai SDK)
+EMBEDDING_MODEL = "models/text-embedding-004"
 EMBEDDING_DIMENSIONS = 768
 
 # ── Chunking ─────────────────────────────────────────────────────────────────

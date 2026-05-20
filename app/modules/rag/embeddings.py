@@ -1,42 +1,39 @@
 """
 Embeddings Module — Gemini Integration
-Generates vector embeddings using Google's Generative AI.
+Generates vector embeddings using Google's GenAI SDK (google.genai).
 Model: text-embedding-004 (768 dimensions)
 """
 from typing import List
 from . import config
 from app.core.config import settings
 
-_genai = None
+_client = None
 
-def _get_genai():
-    global _genai
-    if _genai is None:
-        import google.generativeai as genai
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        _genai = genai
-    return _genai
+def _get_client():
+    global _client
+    if _client is None:
+        from google import genai
+        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    return _client
 
 def embed_texts(texts: List[str]) -> List[List[float]]:
     """
     Generate embeddings for a batch of texts using Gemini.
     """
-    genai = _get_genai()
-    result = genai.embed_content(
+    client = _get_client()
+    result = client.models.embed_content(
         model=config.EMBEDDING_MODEL,
-        content=texts,
-        task_type="retrieval_document"
+        contents=texts,
     )
-    return result['embedding']
+    return [e.values for e in result.embeddings]
 
 def embed_query(query: str) -> List[float]:
     """
     Generate embedding for a single search query using Gemini.
     """
-    genai = _get_genai()
-    result = genai.embed_content(
+    client = _get_client()
+    result = client.models.embed_content(
         model=config.EMBEDDING_MODEL,
-        content=query,
-        task_type="retrieval_query"
+        contents=query,
     )
-    return result['embedding']
+    return result.embeddings[0].values
