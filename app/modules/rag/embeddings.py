@@ -1,7 +1,7 @@
 """
 Embeddings Module — Gemini Integration
 Generates vector embeddings using Google's Generative AI.
-Model: gemini-embedding-2 (768 dimensions)
+Model: text-embedding-004 (768 dimensions)
 """
 from typing import List
 from . import config
@@ -23,7 +23,7 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
     """
     genai = _get_genai()
     result = genai.embed_content(
-        model="models/gemini-embedding-2",
+        model=config.EMBEDDING_MODEL,
         content=texts,
         task_type="retrieval_document"
     )
@@ -35,7 +35,7 @@ def embed_query(query: str) -> List[float]:
     """
     genai = _get_genai()
     result = genai.embed_content(
-        model="models/gemini-embedding-2",
+        model=config.EMBEDDING_MODEL,
         content=query,
         task_type="retrieval_query"
     )
