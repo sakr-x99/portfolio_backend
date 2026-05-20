@@ -35,10 +35,16 @@ def _get_client():
     if _client is None:
         with _get_lock():
             if _client is None:
+                cache_dir = _get_cache_dir()
+                # Force HuggingFace to use writable cache on serverless
+                os.environ["HF_HOME"] = cache_dir
+                os.environ["HF_HUB_CACHE"] = cache_dir
+                os.environ["TRANSFORMERS_CACHE"] = cache_dir
+
                 from fastembed import TextEmbedding
                 _client = TextEmbedding(
                     model_name=config.EMBEDDING_MODEL,
-                    cache_dir=_get_cache_dir(),
+                    cache_dir=cache_dir,
                 )
                 logger.info("Embedding model '%s' loaded", config.EMBEDDING_MODEL)
     return _client
