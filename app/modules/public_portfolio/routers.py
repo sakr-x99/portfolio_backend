@@ -78,11 +78,11 @@ def get_education(db: Session = Depends(get_db)):
 
 @router.post("/education", response_model=schemas.EducationResponse, dependencies=[Depends(get_current_user)])
 def create_education(edu: schemas.EducationCreate, db: Session = Depends(get_db)):
-    return education_crud.create(db, edu, date_fields=["start_date", "end_date"])
+    return education_crud.create(db, edu)
 
 @router.put("/education/{edu_id}", response_model=schemas.EducationResponse, dependencies=[Depends(get_current_user)])
 def update_education(edu_id: int, edu: schemas.EducationCreate, db: Session = Depends(get_db)):
-    return education_crud.update(db, edu_id, edu, exclude_dates=["start_date", "end_date"])
+    return education_crud.update(db, edu_id, edu)
 
 @router.delete("/education/{edu_id}", dependencies=[Depends(get_current_user)])
 def delete_education(edu_id: int, db: Session = Depends(get_db)):
