@@ -12,8 +12,9 @@ QDRANT_API_KEY = settings.QDRANT_API_KEY
 QDRANT_COLLECTION = settings.QDRANT_COLLECTION
 
 # ── Embedding Model ──────────────────────────────────────────────────────────
-# Using multilingual model for Arabic/English support via FastEmbed (local ONNX)
-EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
+# Multilingual model supported by FastEmbed (local ONNX, no API key needed)
+# Supports Arabic + English + 50+ languages, 384 dimensions
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 EMBEDDING_DIMENSIONS = 384
 
 # ── Chunking ─────────────────────────────────────────────────────────────────
