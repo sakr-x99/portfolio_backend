@@ -76,6 +76,20 @@ class GitHubTrendsService:
             })
         return repos
 
+    async def fetch_readme(self, full_name: str) -> Optional[str]:
+        """Fetch raw README.md content from GitHub API."""
+        url = f"https://api.github.com/repos/{full_name}/readme"
+        async with httpx.AsyncClient(
+            headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github.v3+json"},
+            timeout=15.0
+        ) as client:
+            response = await client.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                import base64
+                return base64.b64decode(data["content"].replace("\n", "")).decode("utf-8")
+        return None
+
     async def process_and_store_repos(self, repos: List[Dict[str, Any]]):
         # Set all as inactive first to refresh the top list
         await self.collection.update_many({}, {"$set": {"is_active": False}})
@@ -90,6 +104,14 @@ class GitHubTrendsService:
                 repo_data["is_active"] = False 
                 result = await self.collection.insert_one(repo_data)
                 repo_data["_id"] = result.inserted_id
+                
+                # Fetch and store raw README
+                readme_content = await self.fetch_readme(repo_data["full_name"])
+                if readme_content:
+                    await self.collection.update_one(
+                        {"_id": repo_data["_id"]},
+                        {"$set": {"readme_content": readme_content}}
+                    )
                 
                 # Generate AI Content
                 await self.generate_and_store_ai_content(repo_data)
@@ -114,7 +136,7 @@ class GitHubTrendsService:
                 else:
                     updated_at = existing_repo.get("updated_at")
                     if updated_at and (datetime.utcnow() - updated_at).total_seconds() > 86400:
-                         needs_ai = True
+                          needs_ai = True
                 
                 await self.collection.update_one(
                     {"_id": existing_repo["_id"]},
@@ -268,4 +290,14 @@ class GitHubTrendsService:
         repo = await self.collection.find_one({"full_name": full_name})
         if repo:
             repo["_id"] = str(repo["_id"])
+            # If no stored README, fetch it live from GitHub API
+            if not repo.get("readme_content"):
+                readme = await self.fetch_readme(full_name)
+                if readme:
+                    repo["readme_content"] = readme
+                    # Store it for future requests
+                    await self.collection.update_one(
+                        {"full_name": full_name},
+                        {"$set": {"readme_content": readme}}
+                    )
         return repo
