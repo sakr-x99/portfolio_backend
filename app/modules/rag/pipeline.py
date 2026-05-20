@@ -2,11 +2,12 @@
 RAG Pipeline — Main Orchestrator
 Connects all RAG components: extraction → chunking → embedding → indexing → retrieval → generation.
 """
-import httpx
-import os
+import logging
 from typing import List, Dict
 
-from . import knowledge_extractor, chunker, embeddings, vector_store, prompt
+from . import knowledge_extractor, chunker, embeddings, vector_store
+
+logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -20,44 +21,41 @@ def index_knowledge() -> Dict:
     2. Chunk Markdown files into semantic segments
     3. Generate embeddings for each chunk
     4. Index chunks + embeddings into Qdrant
-    
+
     Returns status dict with stats.
     """
-    print("\n═══ RAG Indexing Pipeline ═══\n")
+    logger.info("═══ RAG Indexing Pipeline ═══")
 
-    # Step 1: Extract knowledge from database
-    print("Step 1/4: Extracting knowledge from database...")
+    logger.info("Step 1/4: Extracting knowledge from database...")
     files = knowledge_extractor.extract_all()
-    print(f"  → Generated {len(files)} knowledge files\n")
+    logger.info("→ Generated %d knowledge files", len(files))
 
-    # Step 2: Chunk the knowledge files
-    print("Step 2/4: Chunking knowledge files...")
+    logger.info("Step 2/4: Chunking knowledge files...")
     chunks = chunker.chunk_all_knowledge()
     if not chunks:
         return {"status": "error", "message": "No chunks generated"}
-    print(f"  → Created {len(chunks)} chunks\n")
+    logger.info("→ Created %d chunks", len(chunks))
 
-    # Step 3: Generate embeddings
-    print("Step 3/4: Generating embeddings...")
+    logger.info("Step 3/4: Generating embeddings...")
     texts = [c["text"] for c in chunks]
     chunk_embeddings = embeddings.embed_texts(texts)
-    print(f"  → Generated {len(chunk_embeddings)} embeddings\n")
+    logger.info("→ Generated %d embeddings", len(chunk_embeddings))
 
-    # Step 4: Index into Qdrant
-    print("Step 4/4: Indexing into Qdrant...")
+    logger.info("Step 4/4: Indexing into Qdrant...")
     vector_store.clear_collection()
     vector_store.index_chunks(chunks, chunk_embeddings)
 
     info = vector_store.get_collection_info()
-    print(f"\n═══ Indexing Complete ═══")
-    print(f"  Points in Qdrant: {info.get('points_count', 'unknown')}\n")
+    points_count = info.get("points_count", 0)
+    logger.info("═══ Indexing Complete ═══")
+    logger.info("Points in Qdrant: %s", points_count)
 
     return {
         "status": "success",
         "files_generated": len(files),
         "chunks_created": len(chunks),
         "embeddings_generated": len(chunk_embeddings),
-        "points_indexed": info.get("points_count", 0),
+        "points_indexed": points_count,
     }
 
 
@@ -65,13 +63,15 @@ def index_knowledge() -> Dict:
 # RETRIEVAL PIPELINE
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def retrieve_context(query: str, top_k: int = 5) -> List[Dict]:
+def retrieve_context(query: str, top_k: int = None) -> List[Dict]:
     """
     Retrieve relevant context for a query:
     1. Generate query embedding
     2. Search Qdrant for similar chunks
     3. Return ranked results with scores
     """
+    from .config import TOP_K as DEFAULT_TOP_K
+    top_k = top_k or DEFAULT_TOP_K
     query_embedding = embeddings.embed_query(query)
     results = vector_store.search(query_embedding, top_k=top_k)
     return results
@@ -81,49 +81,43 @@ def retrieve_context(query: str, top_k: int = 5) -> List[Dict]:
 # GENERATION PIPELINE
 # ═══════════════════════════════════════════════════════════════════════════════
 
-
 async def prepare_rag_state(
     question: str,
     conversation_history: List[Dict] = None,
 ) -> Dict:
     """
-    Run all RAG pre-generation steps via the LangGraph nodes:
-    1. Intent classification
-    2. Query rewrite
-    3. Context retrieval from Qdrant
-    4. Lead capture (if hiring intent)
+    Run all RAG pre-generation steps via the shared LangGraph compiled graph.
+    Uses the same graph as generate_answer to avoid duplicate logic.
 
     Returns the full state ready for prompt building + streaming generation.
-    This avoids duplicating graph logic in streaming endpoints.
     """
     history = list(conversation_history or [])
 
-    state = {
+    inputs = {
         "question": question,
+        "original_question": question,
         "history": history,
         "context": [],
         "answer": "",
         "sources": [],
         "intent": "chat",
         "lead_data": {},
-        "summary": ""
+        "summary": "",
     }
 
-    from .graph import classify_intent_node, rewrite_node, lead_capture_node
+    from .graph import get_rag_app
+    graph = get_rag_app()
 
-    intent_result = await classify_intent_node(state)
-    state.update(intent_result)
-
-    rewrite_result = await rewrite_node(state)
-    state.update(rewrite_result)
-
-    from .config import TOP_K
-    state["context"] = retrieve_context(state["question"], top_k=TOP_K)
-    state["sources"] = list(set(c["source"] for c in state["context"]))
-
-    if state["intent"] == "hiring":
-        lead_result = await lead_capture_node(state)
-        state.update(lead_result)
+    # Run first part of graph: classify → rewrite → retrieve → lead_capture
+    # We use async generator iteration to stop after lead_capture
+    state = inputs
+    async for event in graph.astream(inputs):
+        # The last event is the final state — we take all keys up to generate
+        for node_name, node_output in event.items():
+            if node_name == "generate":
+                break
+            if isinstance(node_output, dict):
+                state.update(node_output)
 
     return state
 
@@ -137,30 +131,27 @@ async def generate_answer(
     1. Invoke the graph (Retrieve -> Generate)
     2. Return the final answer with sources
     """
-    # Build initial state
     history = list(conversation_history or [])
-    # We don't append the question to history here because the graph handles it 
-    # or the prompt builder handles it by combining context + history + current question.
-    
-    # Run graph
+
     inputs = {
         "question": question,
+        "original_question": question,
         "history": history,
         "context": [],
         "answer": "",
         "sources": [],
         "intent": "chat",
         "lead_data": {},
-        "summary": ""
+        "summary": "",
     }
-    
+
     from .graph import get_rag_app
     result = await get_rag_app().ainvoke(inputs)
-    
+
     return {
         "content": result["answer"],
         "sources": result["sources"],
         "chunks_used": len(result["context"]),
         "intent": result["intent"],
-        "summary": result["summary"]
+        "summary": result["summary"],
     }

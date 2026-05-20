@@ -2,10 +2,13 @@
 RAG API Endpoints
 Provides HTTP endpoints for the RAG pipeline: chat, indexing, and health checks.
 """
+import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 from . import pipeline, vector_store
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -49,7 +52,7 @@ async def rag_chat(request: RAGChatRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"RAG Chat Error: {e}")
+        logger.error("RAG Chat Error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"RAG pipeline error: {str(e)}")
 
 
@@ -71,7 +74,7 @@ async def index_knowledge():
             message="Indexing completed successfully"
         )
     except Exception as e:
-        print(f"Indexing Error: {e}")
+        logger.error("Indexing Error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}")
 
 

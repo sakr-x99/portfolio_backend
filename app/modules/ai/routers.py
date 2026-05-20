@@ -3,11 +3,14 @@ AI Chat Router
 Routes chat requests through the RAG pipeline for context-aware answers.
 Falls back to basic chat if RAG is unavailable.
 """
+import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import List
 import json
 from . import schemas
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -34,7 +37,7 @@ async def chat(request: schemas.ChatRequest):
         result = await _rag_chat(request)
         return schemas.ChatResponse(content=result)
     except Exception as rag_error:
-        print(f"  ⚠ RAG pipeline unavailable ({rag_error}), falling back to basic chat...")
+        logger.warning("RAG pipeline unavailable (%s), falling back to basic chat...", rag_error)
         try:
             result = await _basic_chat(request)
             return schemas.ChatResponse(content=result)
@@ -55,7 +58,7 @@ async def stream_chat(request: schemas.ChatRequest):
             async for chunk in _rag_chat_stream(request):
                 yield f"data: {json.dumps({'content': chunk})}\n\n"
         except Exception as e:
-            print(f"  ⚠ RAG stream failed ({e}), falling back to basic stream...")
+            logger.warning("RAG stream failed (%s), falling back to basic stream...", e)
             async for chunk in _basic_chat_stream(request):
                 yield f"data: {json.dumps({'content': chunk})}\n\n"
 
@@ -66,7 +69,6 @@ async def _rag_chat_stream(request: schemas.ChatRequest):
     """Streaming chat using the RAG pipeline — no duplicated graph logic."""
     from app.modules.rag import pipeline, prompt as rag_prompt
     from app.services.ai.manager import ai_manager
-    import json as json_lib
 
     user_messages = [m for m in request.messages if m.role == "user"]
     if not user_messages:
@@ -75,26 +77,24 @@ async def _rag_chat_stream(request: schemas.ChatRequest):
     question = user_messages[-1].content
     history = [{"role": m.role, "content": m.content} for m in request.messages[:-1]]
 
-    # Use the shared RAG state preparation (calls graph nodes internally)
     state = await pipeline.prepare_rag_state(question, history)
 
-    # Build prompt with retrieved context
-    messages = rag_prompt.build_rag_prompt(state["context"], state["history"], state.get("summary", ""))
+    lead = state.get("lead_data", {})
+    missing = []
+    if not lead.get("name"):
+        missing.append("name")
+    if not lead.get("email") and not lead.get("phone"):
+        missing.append("contact info")
+    if not lead.get("meeting_time"):
+        missing.append("meeting time (7-11 PM)")
 
-    # Add booking protocol if hiring intent
-    if state["intent"] == "hiring":
-        lead = state.get("lead_data", {})
-        missing = []
-        if not lead.get("name"): missing.append("name")
-        if not lead.get("email") and not lead.get("phone"): missing.append("contact info")
-        if not lead.get("meeting_time"): missing.append("meeting time (7-11 PM)")
-
-        booking_add = (
-            "\n[BOOKING MODE] Collect: Name, Contact, Time (7-11 PM Egypt)."
-            f" Lead: {json_lib.dumps(lead, ensure_ascii=False)}."
-            f" Missing: {', '.join(missing) if missing else 'None — confirm booking'}.\n"
-        )
-        messages[0]["content"] += booking_add
+    messages = rag_prompt.build_rag_prompt(
+        state["context"],
+        state["history"],
+        state.get("summary", ""),
+        lead_data=lead,
+        missing_fields=missing,
+    )
 
     messages.append({"role": "user", "content": question})
 

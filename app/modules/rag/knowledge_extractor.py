@@ -3,11 +3,14 @@ Knowledge Extractor
 Fetches all portfolio data from PostgreSQL and generates structured Markdown files
 optimized for RAG retrieval. Each section becomes a separate .md file.
 """
+import logging
 import os
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.modules.public_portfolio import models
 from . import config
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_knowledge_dir():
@@ -226,7 +229,7 @@ def extract_all() -> dict[str, str]:
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(content)
             results[filename] = content
-            print(f"  ✓ Generated {filename} ({len(content)} chars)")
+            logger.info("Generated %s (%d chars)", filename, len(content))
 
         # Copy static knowledge files
         static_dir = os.path.join(os.path.dirname(__file__), "knowledge")
@@ -239,7 +242,7 @@ def extract_all() -> dict[str, str]:
                     with open(filepath, "w", encoding="utf-8") as f:
                         f.write(content)
                     results[static_file] = content
-                    print(f"  ✓ Copied static {static_file} ({len(content)} chars)")
+                    logger.info("Copied static %s (%d chars)", static_file, len(content))
 
         return results
 

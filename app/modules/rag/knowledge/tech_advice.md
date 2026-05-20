@@ -4,7 +4,7 @@ Tags: Tech Stack, Comparison, Selection Guide, Architecture, Mohamed Sakr Expert
 
 Mohamed Sakr follows a philosophy of "Start Simple, Scale Smart". Here is his expert guide on technology selection.
 
-## [Backend Frameworks]
+## Backend Frameworks
 
 ### Django
 - **Philosophy:** Full-stack, "Batteries Included", extremely fast development with a built-in Admin panel.
@@ -23,7 +23,7 @@ Mohamed Sakr follows a philosophy of "Start Simple, Scale Smart". Here is his ex
 
 ---
 
-## [System Architecture]
+## System Architecture
 
 ### Modular Monolith
 - **Philosophy:** Start here by default (ideal for 80% of projects).
@@ -37,7 +37,7 @@ Mohamed Sakr follows a philosophy of "Start Simple, Scale Smart". Here is his ex
 
 ---
 
-## [Frontend Frameworks]
+## Frontend Frameworks
 
 ### Next.js (React)
 - **Philosophy:** Industry Standard, massive ecosystem.

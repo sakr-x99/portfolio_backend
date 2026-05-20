@@ -3,12 +3,14 @@ Text Chunker
 Splits Markdown knowledge files into semantic chunks for embedding and indexing.
 Uses recursive character splitting with Markdown-aware separators.
 """
+import logging
 import os
 from typing import List, Dict
 from . import config
 
-
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
+
+logger = logging.getLogger(__name__)
 
 def chunk_file(filepath: str) -> List[Dict]:
     """
@@ -68,7 +70,7 @@ def chunk_all_knowledge() -> List[Dict]:
     all_chunks = []
 
     if not os.path.exists(config.KNOWLEDGE_DIR):
-        print("  ⚠ Knowledge directory not found. Run extraction first.")
+        logger.warning("Knowledge directory not found. Run extraction first.")
         return all_chunks
 
     for filename in sorted(os.listdir(config.KNOWLEDGE_DIR)):
@@ -78,7 +80,7 @@ def chunk_all_knowledge() -> List[Dict]:
         filepath = os.path.join(config.KNOWLEDGE_DIR, filename)
         file_chunks = chunk_file(filepath)
         all_chunks.extend(file_chunks)
-        print(f"  ✓ Chunked {filename} → {len(file_chunks)} chunks")
+        logger.info("Chunked %s → %d chunks", filename, len(file_chunks))
 
-    print(f"  Total: {len(all_chunks)} chunks ready for embedding")
+    logger.info("Total: %d chunks ready for embedding", len(all_chunks))
     return all_chunks
