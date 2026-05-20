@@ -24,7 +24,7 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
     ]
     response = _client.post(
         f"{BASE_URL}/{config.EMBEDDING_MODEL}:batchEmbedContents",
-        params={"key": settings.GEMINI_API_KEY},
+        params={"key": settings.GEMINI_API_KEY_2 or settings.GEMINI_API_KEY},
         json={"requests": requests},
     )
     response.raise_for_status()
@@ -37,7 +37,7 @@ def embed_query(query: str) -> List[float]:
     """
     response = _client.post(
         f"{BASE_URL}/{config.EMBEDDING_MODEL}:embedContent",
-        params={"key": settings.GEMINI_API_KEY},
+        params={"key": settings.GEMINI_API_KEY_2 or settings.GEMINI_API_KEY},
         json={
             "model": config.EMBEDDING_MODEL,
             "content": {"parts": [{"text": query}]},
