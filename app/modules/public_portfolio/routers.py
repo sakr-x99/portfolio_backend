@@ -60,11 +60,11 @@ def get_experiences(db: Session = Depends(get_db)):
 
 @router.post("/experiences", response_model=schemas.ExperienceResponse, dependencies=[Depends(get_current_user)])
 def create_experience(exp: schemas.ExperienceCreate, db: Session = Depends(get_db)):
-    return experience_crud.create(db, exp, date_fields=["start_date", "end_date"])
+    return experience_crud.create(db, exp)
 
 @router.put("/experiences/{exp_id}", response_model=schemas.ExperienceResponse, dependencies=[Depends(get_current_user)])
 def update_experience(exp_id: int, exp: schemas.ExperienceCreate, db: Session = Depends(get_db)):
-    return experience_crud.update(db, exp_id, exp, exclude_dates=["start_date", "end_date"])
+    return experience_crud.update(db, exp_id, exp)
 
 @router.delete("/experiences/{exp_id}", dependencies=[Depends(get_current_user)])
 def delete_experience(exp_id: int, db: Session = Depends(get_db)):
