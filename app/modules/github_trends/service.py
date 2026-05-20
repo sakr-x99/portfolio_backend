@@ -128,6 +128,12 @@ class GitHubTrendsService:
                     "updated_at": datetime.utcnow()
                 }
                 
+                # Fetch updated README if missing
+                if not existing_repo.get("readme_content"):
+                    readme = await self.fetch_readme(repo_data["full_name"])
+                    if readme:
+                        update_data["readme_content"] = readme
+                
                 # Only re-generate AI content if it doesn't exist or is older than 24h
                 needs_ai = False
                 if "arabic_summary" not in existing_repo:
