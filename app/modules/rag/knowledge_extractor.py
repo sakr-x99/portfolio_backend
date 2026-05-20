@@ -82,8 +82,8 @@ def extract_experience(db: Session) -> str:
     md += f"Mohamed Sakr has {len(experiences)} professional experience entries.\n\n"
 
     for exp in experiences:
-        end = exp.end_date.strftime("%B %Y") if exp.end_date else "Present"
-        start = exp.start_date.strftime("%B %Y") if exp.start_date else "Unknown"
+        end = exp.end_date or "Present"
+        start = exp.start_date or "Unknown"
         md += f"## {exp.role} at {exp.company}\n\n"
         md += f"**Duration:** {start} — {end}\n\n"
         if exp.description:
@@ -101,8 +101,8 @@ def extract_education(db: Session) -> str:
 
     md = "# Education\n\n"
     for edu in education:
-        end = edu.end_date.strftime("%Y") if edu.end_date else "Present"
-        start = edu.start_date.strftime("%Y") if edu.start_date else "Unknown"
+        end = getattr(edu, 'end_date', None) or "Present"
+        start = getattr(edu, 'start_date', None) or "Unknown"
         md += f"## {edu.degree}\n\n"
         md += f"**Institution:** {edu.institution}\n\n"
         md += f"**Period:** {start} — {end}\n\n"
