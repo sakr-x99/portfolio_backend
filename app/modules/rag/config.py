@@ -3,6 +3,7 @@ RAG Configuration
 Centralized settings for the Retrieval-Augmented Generation pipeline.
 """
 import os
+import tempfile
 from app.core.config import settings
 
 # ── Vector Database ──────────────────────────────────────────────────────────
@@ -24,8 +25,13 @@ TOP_K = 3                 # Number of chunks to retrieve
 SCORE_THRESHOLD = 0.5     # Minimum similarity score (0-1) — was 0.3, raised to reduce noise
 
 # ── Knowledge Base ───────────────────────────────────────────────────────────
+# On Vercel/serverless, only /tmp/ is writable. On local, use a persistent dir.
+_is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+
 _knownledge_base = getattr(settings, "KNOWLEDGE_DIR", None)
 if _knownledge_base:
     KNOWLEDGE_DIR = _knownledge_base
+elif _is_serverless:
+    KNOWLEDGE_DIR = os.path.join(tempfile.gettempdir(), "sakr_portfolio_knowledge")
 else:
     KNOWLEDGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_knowledge")
