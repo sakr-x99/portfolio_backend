@@ -82,6 +82,23 @@ async def startup_event():
         setup_github_trends_scheduler()
         print("  ✓ Scheduler: Started")
     except Exception as e:
-        print(f"  ⚠ Scheduler: Failed to start: {e}")
+        print(f"   Scheduler: Failed to start: {e}")
+
+    # RAG Knowledge Indexing — only on local/dev (skip on Vercel serverless)
+    _is_serverless = bool(__import__('os').environ.get("VERCEL") or __import__('os').environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+    if not _is_serverless:
+        try:
+            from app.modules.rag import pipeline, vector_store
+            vector_store.ensure_collection()
+            result = pipeline.index_knowledge()
+            if result.get("status") == "success":
+                print(f"  ✓ RAG: Indexed {result.get('points_indexed', 0)} chunks")
+            else:
+                print(f"  ⚠ RAG: Indexing returned {result.get('status')}")
+        except Exception as e:
+            print(f"  ⚠ RAG: Indexing failed (run seed_data.py first): {e}")
+    else:
+        print("  ⏭ RAG: Skipped on serverless (use /api/v1/rag/index endpoint)")
+
     print("✅ Startup complete")
 
