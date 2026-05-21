@@ -308,6 +308,12 @@ class GitHubTrendsService:
         return sorted([lang for lang in languages if lang])
 
     async def process_and_store_repos(self, repos: List[Dict[str, Any]], since: str = "daily"):
+        # Fix old data: convert since from string to array
+        await self.collection.update_many(
+            {"since": {"$type": "string"}},
+            [{"$set": {"since": ["$since"]}}]
+        )
+        
         for repo_data in repos:
             existing_repo = await self.collection.find_one({"full_name": repo_data["full_name"]})
             
