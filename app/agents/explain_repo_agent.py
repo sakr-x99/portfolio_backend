@@ -51,7 +51,7 @@ class ExplainRepoAgent(BaseAgent):
     async def _fetch_repo_context(self, full_name: str, question: str = "") -> str:
         from app.modules.github_trends.service import GitHubTrendsService
         from app.modules.rag.embeddings import embed_query
-        from app.modules.rag.vector_store import search
+        from app.modules.rag.vector_store import search, ensure_collection
 
         svc = GitHubTrendsService()
         repo = await svc.get_repo_by_full_name(full_name)
@@ -60,12 +60,15 @@ class ExplainRepoAgent(BaseAgent):
 
         repo_query = question or f"شرح ريبو {full_name}"
         query_embedding = embed_query(repo_query)
-        chunks = search(
-            query_embedding,
-            top_k=10,
-            source_filter="repo_readme",
-            extra_filters={"full_name": full_name},
-        )
+        try:
+            chunks = search(
+                query_embedding,
+                top_k=10,
+                source_filter="repo_readme",
+                extra_filters={"full_name": full_name},
+            )
+        except Exception:
+            chunks = []
 
         if chunks:
             context_parts = []

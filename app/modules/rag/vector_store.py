@@ -26,8 +26,12 @@ def _get_qdrant():
     from qdrant_client import QdrantClient
     from qdrant_client.models import (
         Distance, VectorParams, PointStruct,
-        Filter, FieldCondition, MatchValue, PayloadSchemaType,
+        Filter, FieldCondition, MatchValue,
     )
+    try:
+        from qdrant_client.models import PayloadSchemaType
+    except ImportError:
+        PayloadSchemaType = None
     return QdrantClient, Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue, PayloadSchemaType
 
 
@@ -91,20 +95,24 @@ def ensure_collection():
         logger.info("Collection '%s' created", collection_name)
 
     # Create payload indexes for filtered fields (required in newer Qdrant versions)
-    try:
-        _, _, _, _, _, _, _, PayloadSchemaType = _get_qdrant()
-        for field in ("source", "full_name"):
+    for field in ("source", "full_name"):
+        try:
+            client.create_payload_index(
+                collection_name=collection_name,
+                field_name=field,
+                field_schema="keyword",
+            )
+            logger.info("Created payload index on '%s'", field)
+        except Exception:
             try:
                 client.create_payload_index(
                     collection_name=collection_name,
                     field_name=field,
-                    field_schema=PayloadSchemaType.KEYWORD,
+                    field_type="keyword",
                 )
                 logger.info("Created payload index on '%s'", field)
-            except Exception as e:
-                logger.warning("Failed to create payload index on '%s': %s", field, e)
-    except Exception as e:
-        logger.warning("Could not import PayloadSchemaType: %s", e)
+            except Exception:
+                pass
 
 
 def index_chunks(chunks: List[Dict], embeddings: List[List[float]]):
@@ -153,39 +161,68 @@ def search(
     Perform semantic similarity search in Qdrant.
     Supports optional source filter and extra field filters (e.g. full_name).
     """
-    _, _, _, _, Filter, FieldCondition, MatchValue, *_ = _get_qdrant()
+    _, _, _, _, Filter, FieldCondition, MatchValue, PayloadSchemaType = _get_qdrant()
     client = _get_client()
     top_k = top_k or config.TOP_K
     score_threshold = score_threshold or config.SCORE_THRESHOLD
 
     conditions = []
+    indexed_fields = set()
     if source_filter:
         conditions.append(FieldCondition(key="source", match=MatchValue(value=source_filter)))
+        indexed_fields.add("source")
     if extra_filters:
         for key, value in extra_filters.items():
             conditions.append(FieldCondition(key=key, match=MatchValue(value=value)))
+            indexed_fields.add(key)
 
     search_filter = Filter(must=conditions) if conditions else None
 
-    if hasattr(client, "search"):
-        results = client.search(
-            collection_name=config.QDRANT_COLLECTION,
-            query_vector=query_embedding,
-            query_filter=search_filter,
-            limit=top_k,
-            score_threshold=score_threshold,
-        )
-    elif hasattr(client, "query_points"):
-        resp = client.query_points(
-            collection_name=config.QDRANT_COLLECTION,
-            query=query_embedding,
-            query_filter=search_filter,
-            limit=top_k,
-            score_threshold=score_threshold,
-        )
-        results = resp.points
-    else:
-        raise RuntimeError("QdrantClient has neither 'search' nor 'query_points' method")
+    def _do_search():
+        if hasattr(client, "search"):
+            return client.search(
+                collection_name=config.QDRANT_COLLECTION,
+                query_vector=query_embedding,
+                query_filter=search_filter,
+                limit=top_k,
+                score_threshold=score_threshold,
+            )
+        elif hasattr(client, "query_points"):
+            resp = client.query_points(
+                collection_name=config.QDRANT_COLLECTION,
+                query=query_embedding,
+                query_filter=search_filter,
+                limit=top_k,
+                score_threshold=score_threshold,
+            )
+            return resp.points
+        else:
+            raise RuntimeError("QdrantClient has neither 'search' nor 'query_points' method")
+
+    try:
+        results = _do_search()
+    except Exception as e:
+        err_str = str(e)
+        if "Index required" in err_str:
+            for field in indexed_fields:
+                try:
+                    client.create_payload_index(
+                        collection_name=config.QDRANT_COLLECTION,
+                        field_name=field,
+                        field_schema=PayloadSchemaType.KEYWORD,
+                    )
+                except Exception:
+                    try:
+                        client.create_payload_index(
+                            collection_name=config.QDRANT_COLLECTION,
+                            field_name=field,
+                            field_type=PayloadSchemaType.KEYWORD,
+                        )
+                    except Exception:
+                        pass
+            results = _do_search()
+        else:
+            raise
 
     return [
         {
