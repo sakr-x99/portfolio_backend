@@ -217,7 +217,7 @@ class GitHubTrendsService:
         return repos
 
     async def get_active_repos(self, language: Optional[str] = None, since: str = "daily", limit: int = 25) -> List[Dict[str, Any]]:
-        query = {"is_active": True}
+        query = {"is_active": True, "since": since}
         if language:
             query["language"] = language
             
