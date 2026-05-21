@@ -90,80 +90,6 @@ class GitHubTrendsService:
                 return base64.b64decode(data["content"].replace("\n", "")).decode("utf-8")
         return None
 
-    async def process_and_store_repos(self, repos: List[Dict[str, Any]]):
-        # Set all as inactive first to refresh the top list
-        await self.collection.update_many({}, {"$set": {"is_active": False}})
-        
-        for repo_data in repos:
-            # Check if exists in MongoDB
-            existing_repo = await self.collection.find_one({"full_name": repo_data["full_name"]})
-            
-            if not existing_repo:
-                repo_data["created_at"] = datetime.utcnow()
-                # Insert but keep inactive until we have content
-                repo_data["is_active"] = False 
-                result = await self.collection.insert_one(repo_data)
-                repo_data["_id"] = result.inserted_id
-                
-                # Fetch and store raw README
-                readme_content = await self.fetch_readme(repo_data["full_name"])
-                if readme_content:
-                    await self.collection.update_one(
-                        {"_id": repo_data["_id"]},
-                        {"$set": {"readme_content": readme_content, "is_active": True}}
-                    )
-                else:
-                    # Fallback: Activate anyway so it shows up (maybe add error flag later)
-                    await self.collection.update_one(
-                        {"_id": repo_data["_id"]},
-                        {"$set": {"is_active": True}}
-                    )
-                
-                # Generate AI Content (Best effort, don't block activation)
-                try:
-                    await self.generate_and_store_ai_content(repo_data)
-                except Exception as e:
-                    print(f"AI Generation failed for {repo_data['full_name']}: {e}")
-            else:
-                # Update stats and rank
-                update_data = {
-                    "stars": repo_data["stars"],
-                    "forks": repo_data["forks"],
-                    "rank": repo_data["rank"],
-                    "is_active": True, # Reactivate immediately if it already has AI content
-                    "updated_at": datetime.utcnow()
-                }
-                
-                # Fetch updated README if missing
-                if not existing_repo.get("readme_content"):
-                    readme = await self.fetch_readme(repo_data["full_name"])
-                    if readme:
-                        update_data["readme_content"] = readme
-                
-                # Only re-generate AI content if it doesn't exist or is older than 24h
-                needs_ai = False
-                if "arabic_summary" not in existing_repo:
-                    needs_ai = True
-                    update_data["is_active"] = False # Hide until AI is done
-                else:
-                    updated_at = existing_repo.get("updated_at")
-                    if updated_at and (datetime.utcnow() - updated_at).total_seconds() > 86400:
-                          needs_ai = True
-                
-                await self.collection.update_one(
-                    {"_id": existing_repo["_id"]},
-                    {"$set": update_data}
-                )
-                
-                if needs_ai:
-                    repo_data["_id"] = existing_repo["_id"]
-                    await self.generate_and_store_ai_content(repo_data)
-                    # Activate after AI
-                    await self.collection.update_one({"_id": repo_data["_id"]}, {"$set": {"is_active": True}})
-
-            # Small delay to be "one by one" and avoid rate limits
-            await asyncio.sleep(2)
-
     async def generate_and_store_ai_content(self, repo: Dict[str, Any]):
         try:
             # Use crawl4ai to get full repo content if possible
@@ -291,7 +217,13 @@ class GitHubTrendsService:
         return repos
 
     async def get_active_repos(self, language: Optional[str] = None, since: str = "daily", limit: int = 25) -> List[Dict[str, Any]]:
-        query = {"is_active": True, "since": since}
+        query = {
+            "is_active": True,
+            "$or": [
+                {"since": since},
+                {"since": {"$exists": False}}
+            ]
+        }
         if language:
             query["language"] = language
             
