@@ -26,9 +26,9 @@ def _get_qdrant():
     from qdrant_client import QdrantClient
     from qdrant_client.models import (
         Distance, VectorParams, PointStruct,
-        Filter, FieldCondition, MatchValue,
+        Filter, FieldCondition, MatchValue, PayloadSchemaType,
     )
-    return QdrantClient, Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
+    return QdrantClient, Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue, PayloadSchemaType
 
 
 def _get_client():
@@ -91,15 +91,20 @@ def ensure_collection():
         logger.info("Collection '%s' created", collection_name)
 
     # Create payload indexes for filtered fields (required in newer Qdrant versions)
-    for field in ("source", "full_name"):
-        try:
-            client.create_payload_index(
-                collection_name=collection_name,
-                field_name=field,
-                field_schema="keyword",
-            )
-        except Exception as e:
-            logger.debug("Payload index for '%s' may already exist: %s", field, e)
+    try:
+        _, _, _, _, _, _, _, PayloadSchemaType = _get_qdrant()
+        for field in ("source", "full_name"):
+            try:
+                client.create_payload_index(
+                    collection_name=collection_name,
+                    field_name=field,
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
+                logger.info("Created payload index on '%s'", field)
+            except Exception as e:
+                logger.warning("Failed to create payload index on '%s': %s", field, e)
+    except Exception as e:
+        logger.warning("Could not import PayloadSchemaType: %s", e)
 
 
 def index_chunks(chunks: List[Dict], embeddings: List[List[float]]):
@@ -148,7 +153,7 @@ def search(
     Perform semantic similarity search in Qdrant.
     Supports optional source filter and extra field filters (e.g. full_name).
     """
-    _, _, _, _, Filter, FieldCondition, MatchValue = _get_qdrant()
+    _, _, _, _, Filter, FieldCondition, MatchValue, *_ = _get_qdrant()
     client = _get_client()
     top_k = top_k or config.TOP_K
     score_threshold = score_threshold or config.SCORE_THRESHOLD
