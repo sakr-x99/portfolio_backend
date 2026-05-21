@@ -151,13 +151,25 @@ def search(
 
     search_filter = Filter(must=conditions) if conditions else None
 
-    results = client.search(
-        collection_name=config.QDRANT_COLLECTION,
-        query_vector=query_embedding,
-        query_filter=search_filter,
-        limit=top_k,
-        score_threshold=score_threshold,
-    )
+    if hasattr(client, "search"):
+        results = client.search(
+            collection_name=config.QDRANT_COLLECTION,
+            query_vector=query_embedding,
+            query_filter=search_filter,
+            limit=top_k,
+            score_threshold=score_threshold,
+        )
+    elif hasattr(client, "query_points"):
+        resp = client.query_points(
+            collection_name=config.QDRANT_COLLECTION,
+            query=query_embedding,
+            query_filter=search_filter,
+            limit=top_k,
+            score_threshold=score_threshold,
+        )
+        results = resp.points
+    else:
+        raise RuntimeError("QdrantClient has neither 'search' nor 'query_points' method")
 
     return [
         {
