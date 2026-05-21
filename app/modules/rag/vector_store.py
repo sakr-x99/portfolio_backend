@@ -90,6 +90,17 @@ def ensure_collection():
         )
         logger.info("Collection '%s' created", collection_name)
 
+    # Create payload indexes for filtered fields (required in newer Qdrant versions)
+    for field in ("source", "full_name"):
+        try:
+            client.create_payload_index(
+                collection_name=collection_name,
+                field_name=field,
+                field_schema="keyword",
+            )
+        except Exception as e:
+            logger.debug("Payload index for '%s' may already exist: %s", field, e)
+
 
 def index_chunks(chunks: List[Dict], embeddings: List[List[float]]):
     """
