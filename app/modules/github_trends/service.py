@@ -27,11 +27,7 @@ class GitHubTrendsService:
         async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=20.0) as client:
             response = await client.get(url)
             response.raise_for_status()
-            repos = self._parse_github_html(response.text)
-            # Tag repos with the since period
-            for repo in repos:
-                repo["since"] = since
-            return repos
+            return self._parse_github_html(response.text)
 
     def _parse_github_html(self, html: str) -> List[Dict[str, Any]]:
         soup = bs4.BeautifulSoup(html, "lxml")
@@ -312,16 +308,13 @@ class GitHubTrendsService:
         return sorted([lang for lang in languages if lang])
 
     async def process_and_store_repos(self, repos: List[Dict[str, Any]], since: str = "daily"):
-        # Mark repos from this period as inactive first
-        await self.collection.update_many({"since": since}, {"$set": {"is_active": False}})
-        
         for repo_data in repos:
-            repo_data["since"] = since
             existing_repo = await self.collection.find_one({"full_name": repo_data["full_name"]})
             
             if not existing_repo:
                 repo_data["created_at"] = datetime.utcnow()
                 repo_data["is_active"] = False 
+                repo_data["since"] = [since]
                 result = await self.collection.insert_one(repo_data)
                 repo_data["_id"] = result.inserted_id
                 
@@ -347,9 +340,14 @@ class GitHubTrendsService:
                     "forks": repo_data["forks"],
                     "rank": repo_data["rank"],
                     "is_active": True,
-                    "updated_at": datetime.utcnow(),
-                    "since": since
+                    "updated_at": datetime.utcnow()
                 }
+                
+                # Add current period to the since array
+                await self.collection.update_one(
+                    {"_id": existing_repo["_id"]},
+                    {"$addToSet": {"since": since}}
+                )
                 
                 if not existing_repo.get("readme_content"):
                     readme = await self.fetch_readme(repo_data["full_name"])
