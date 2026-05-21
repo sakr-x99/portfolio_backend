@@ -56,13 +56,14 @@ BOOKING_PROTOCOL = """
 CONTEXT_TEMPLATE = "\nSource: {source}\n{text}\n"
 
 
-def sanitize_context(text: str) -> str:
-    """Remove image references from context to prevent AI model errors."""
-    text = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'\1', text)
-    text = re.sub(r'https?://\S+\.(png|jpg|jpeg|gif|svg|webp)(\?\S*)?', '[image]', text, flags=re.IGNORECASE)
-    text = re.sub(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', '[base64-image]', text)
-    text = re.sub(r'<img[^>]+>', '[image]', text, flags=re.IGNORECASE)
-    text = re.sub(r'<svg[^>]*>.*?</svg>', '[svg]', text, flags=re.DOTALL | re.IGNORECASE)
+def strip_images(text: str) -> str:
+    """Remove ALL image references from context."""
+    text = re.sub(r'!\[([^\]]*)\]\([^)]+\)', '', text)
+    text = re.sub(r'https?://\S+\.(png|jpg|jpeg|gif|svg|webp|ico)(\?\S*)?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', '', text)
+    text = re.sub(r'<img[^>]+>', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'<svg[^>]*>.*?</svg>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<figure[^>]*>.*?</figure>', '', text, flags=re.DOTALL | re.IGNORECASE)
     return text
 
 
@@ -84,7 +85,7 @@ def build_rag_prompt(
         context_str = "\n".join([
             CONTEXT_TEMPLATE.format(
                 source=chunk.get("source", "Unknown"),
-                text=sanitize_context(chunk.get("text", ""))
+                text=strip_images(chunk.get("text", ""))
             )
             for chunk in top_chunks
         ])
