@@ -207,7 +207,7 @@ class GitHubTrendsService:
         )
 
         splits = text_splitter.split_text(readme_content)
-        texts = [split.page_content for split in splits]
+        texts = splits
 
         if not texts:
             return
