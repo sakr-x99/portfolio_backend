@@ -9,10 +9,16 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage] = Field(min_length=1, max_length=50)
+    session_id: Optional[str] = Field(default=None, max_length=32, description="Session ID for conversation memory")
 
 class ChatResponse(BaseModel):
     content: str
+    session_id: Optional[str] = None
+    agent: Optional[str] = None
+    sources: List[str] = []
+    cached: bool = False
 
 class ExplainRepoRequest(BaseModel):
     full_name: str = Field(min_length=1, max_length=200, description="GitHub repo full name (owner/repo)")
     question: str = Field(default="", max_length=500, description="Optional specific question about the repo")
+    session_id: Optional[str] = Field(default=None, max_length=32, description="Session ID for conversation memory")

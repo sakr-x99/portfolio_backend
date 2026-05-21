@@ -135,3 +135,45 @@ def get_cached_or_set(key: str, ttl: int, fallback: Callable) -> Any:
         except Exception:
             pass
     return result
+
+
+def get_ai_cache_key(agent_name: str, question: str, top_context: str = "") -> str:
+    raw = f"ai_cache:{agent_name}:{question.strip().lower()}:{top_context[:200]}"
+    return f"ai_cache:{agent_name}:{hashlib.md5(raw.encode()).hexdigest()}"
+
+
+def get_cached_ai_response(cache_key: str, ttl: int = 300) -> Optional[str]:
+    r = get_redis()
+    if r is None:
+        return None
+    try:
+        data = r.get(cache_key)
+        if data:
+            return json.loads(data)
+    except Exception:
+        pass
+    return None
+
+
+def set_cached_ai_response(cache_key: str, response: str, ttl: int = 300):
+    r = get_redis()
+    if r is None:
+        return
+    try:
+        r.setex(cache_key, ttl, json.dumps(response))
+    except Exception:
+        pass
+
+
+def invalidate_ai_cache(agent_name: Optional[str] = None):
+    """Invalidate AI response cache. If agent_name is None, clears all."""
+    r = get_redis()
+    if r is None:
+        return
+    try:
+        pattern = f"ai_cache:{agent_name}:*" if agent_name else "ai_cache:*"
+        keys = r.keys(pattern)
+        if keys:
+            r.delete(*keys)
+    except Exception:
+        pass

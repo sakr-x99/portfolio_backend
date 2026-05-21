@@ -64,6 +64,14 @@ def health_check():
 @app.on_event("startup")
 async def startup_event():
     print(f"🚀 Starting {settings.PROJECT_NAME} v{settings.VERSION}...")
+
+    # Register AI agents
+    try:
+        from app.agents import register_all_agents
+        register_all_agents()
+        print("  ✓ Agents: Registered")
+    except Exception as e:
+        print(f"  ⚠ Agents: Failed to register: {e}")
     
     # Database migration: Alter Experience columns start_date and end_date from DATE to VARCHAR
     try:
