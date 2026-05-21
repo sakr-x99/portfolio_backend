@@ -26,6 +26,7 @@ class GeminiProvider(BaseAIProvider):
         return self._genai
 
     def _convert_messages(self, messages: List[Message]) -> tuple[str, list]:
+        genai = self._get_genai()
         system_instruction = ""
         contents = []
         for msg in messages:
@@ -33,7 +34,10 @@ class GeminiProvider(BaseAIProvider):
                 system_instruction = msg["content"]
             else:
                 role = "user" if msg["role"] == "user" else "model"
-                contents.append({"role": role, "parts": [msg["content"]]})
+                contents.append({
+                    "role": role,
+                    "parts": [genai.types.Part(text=msg["content"])],
+                })
         return system_instruction, contents
 
     def _get_model(self, model_name: str, system_instruction: str = ""):

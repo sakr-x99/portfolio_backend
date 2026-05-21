@@ -134,26 +134,32 @@ class ExplainRepoAgent(BaseAgent):
             yield context_str
             return
 
-        system_content = EXPLAIN_REPO_SYSTEM_PROMPT.format(context=context_str)
         user_message = question or f"شرحتلي الـ GitHub repository {full_name} بالعامية المصرية"
+        desc = self._strip_images(repo.get("description", "") or "No description")
 
-        messages = [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": user_message},
+        # Try multiple levels of context, fall back progressively
+        contexts_to_try = [
+            ("full readme", context_str),
+            ("description only", desc),
+            ("no context", f"Repository: {full_name}"),
         ]
 
         from app.services.ai.manager import ai_manager
-        try:
-            async for chunk in ai_manager.generate_stream(messages=messages, temperature=0.5, max_tokens=1024):
-                yield chunk
-        except Exception as e:
-            logger.error("AI generate_stream failed for explain_repo '%s': %s", full_name, e, exc_info=True)
-            # Try with ONLY the user message (no system prompt) as last resort
+
+        for ctx_label, ctx_text in contexts_to_try:
             try:
-                logger.warning("Retrying explain_repo without system prompt context...")
-                fallback_messages = [{"role": "user", "content": user_message}]
-                async for chunk in ai_manager.generate_stream(messages=fallback_messages, temperature=0.5, max_tokens=512):
+                system_content = EXPLAIN_REPO_SYSTEM_PROMPT.format(context=ctx_text)
+                messages = [
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": user_message},
+                ]
+                logger.info("Trying explain_repo with %s for '%s'", ctx_label, full_name)
+                async for chunk in ai_manager.generate_stream(messages=messages, temperature=0.5, max_tokens=1024):
                     yield chunk
-            except Exception as e2:
-                logger.error("Fallback also failed: %s", e2)
-                yield f"\n\n⚠️ عذرًا، حصل مشكلة في الاتصال بـ AI. الخطأ: {e}"
+                return  # Success! Stop after first working attempt
+            except Exception as e:
+                logger.warning("explain_repo with %s failed for '%s': %s", ctx_label, full_name, e)
+                continue  # Try next context level
+
+        # If all attempts fail, yield error
+        yield f"\n\n⚠️ عذرًا، حصل مشكلة في الاتصال بـ AI بعد محاولة كل المستويات. اتأكد من مفتاح API."
