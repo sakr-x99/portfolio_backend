@@ -36,6 +36,20 @@ class ExplainRepoAgent(BaseAgent):
     def system_prompt(self) -> str:
         return EXPLAIN_REPO_SYSTEM_PROMPT
 
+    def _sanitize_context(self, text: str) -> str:
+        import re
+        # Remove markdown images ![alt](url)
+        text = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'\1', text)
+        # Remove raw image URLs ending in image extensions
+        text = re.sub(r'https?://\S+\.(png|jpg|jpeg|gif|svg|webp)(\?\S*)?', '[image]', text, flags=re.IGNORECASE)
+        # Remove data URIs (base64 embedded images)
+        text = re.sub(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', '[base64-image]', text)
+        # Remove HTML img tags
+        text = re.sub(r'<img[^>]+>', '[image]', text, flags=re.IGNORECASE)
+        # Remove HTML svg tags and their content
+        text = re.sub(r'<svg[^>]*>.*?</svg>', '[svg]', text, flags=re.DOTALL | re.IGNORECASE)
+        return text
+
     async def _fetch_repo_context(self, full_name: str, question: str = "") -> str:
         from app.modules.github_trends.service import GitHubTrendsService
         from app.modules.rag.embeddings import embed_query
@@ -58,10 +72,13 @@ class ExplainRepoAgent(BaseAgent):
         if chunks:
             context_parts = []
             for c in chunks:
-                context_parts.append(f"[Chunk {c.get('chunk_index', 0)}] {c['text']}")
+                sanitized = self._sanitize_context(c['text'])
+                context_parts.append(f"[Chunk {c.get('chunk_index', 0)}] {sanitized}")
             context_str = "\n\n".join(context_parts)
         else:
             readme = repo.get("readme_content", "")
+            if readme:
+                readme = self._sanitize_context(readme)
             if readme and len(readme) > 8000:
                 context_str = readme[:8000] + "\n\n...(اختصار)"
             elif readme:

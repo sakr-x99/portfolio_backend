@@ -4,6 +4,7 @@ Optimized system prompts and context injection templates
 for the RAG pipeline.
 """
 import json
+import re
 import logging
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,16 @@ BOOKING_PROTOCOL = """
 CONTEXT_TEMPLATE = "\nSource: {source}\n{text}\n"
 
 
+def sanitize_context(text: str) -> str:
+    """Remove image references from context to prevent AI model errors."""
+    text = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'\1', text)
+    text = re.sub(r'https?://\S+\.(png|jpg|jpeg|gif|svg|webp)(\?\S*)?', '[image]', text, flags=re.IGNORECASE)
+    text = re.sub(r'data:image/\w+;base64,[A-Za-z0-9+/=]+', '[base64-image]', text)
+    text = re.sub(r'<img[^>]+>', '[image]', text, flags=re.IGNORECASE)
+    text = re.sub(r'<svg[^>]*>.*?</svg>', '[svg]', text, flags=re.DOTALL | re.IGNORECASE)
+    return text
+
+
 def build_rag_prompt(
     retrieved_chunks: list,
     history: list = None,
@@ -73,7 +84,7 @@ def build_rag_prompt(
         context_str = "\n".join([
             CONTEXT_TEMPLATE.format(
                 source=chunk.get("source", "Unknown"),
-                text=chunk.get("text", "")
+                text=sanitize_context(chunk.get("text", ""))
             )
             for chunk in top_chunks
         ])
