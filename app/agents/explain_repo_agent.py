@@ -129,7 +129,13 @@ class ExplainRepoAgent(BaseAgent):
         import logging
         logger = logging.getLogger(__name__)
 
-        repo, context_str = await self._fetch_repo_context(full_name, question)
+        try:
+            repo, context_str = await self._fetch_repo_context(full_name, question)
+        except Exception as e:
+            logger.error("Fetch repo context failed for '%s': %s", full_name, e, exc_info=True)
+            yield f"⚠️ فشل في جلب بيانات الريبو: {e}"
+            return
+
         if repo is None:
             yield context_str
             return
@@ -137,7 +143,6 @@ class ExplainRepoAgent(BaseAgent):
         user_message = question or f"شرحتلي الـ GitHub repository {full_name} بالعامية المصرية"
         desc = self._strip_images(repo.get("description", "") or "No description")
 
-        # Try multiple levels of context, fall back progressively
         contexts_to_try = [
             ("full readme", context_str),
             ("description only", desc),
@@ -149,17 +154,15 @@ class ExplainRepoAgent(BaseAgent):
         for ctx_label, ctx_text in contexts_to_try:
             try:
                 system_content = EXPLAIN_REPO_SYSTEM_PROMPT.format(context=ctx_text)
-                messages = [
-                    {"role": "system", "content": system_content},
-                    {"role": "user", "content": user_message},
-                ]
-                logger.info("Trying explain_repo with %s for '%s'", ctx_label, full_name)
-                async for chunk in ai_manager.generate_stream(messages=messages, temperature=0.5, max_tokens=1024):
+                async for chunk in ai_manager.generate_stream(
+                    messages=[{"role": "system", "content": system_content}, {"role": "user", "content": user_message}],
+                    temperature=0.5,
+                    max_tokens=1024,
+                ):
                     yield chunk
-                return  # Success! Stop after first working attempt
+                return
             except Exception as e:
                 logger.warning("explain_repo with %s failed for '%s': %s", ctx_label, full_name, e)
-                continue  # Try next context level
+                continue
 
-        # If all attempts fail, yield error
-        yield f"\n\n⚠️ عذرًا، حصل مشكلة في الاتصال بـ AI بعد محاولة كل المستويات. اتأكد من مفتاح API."
+        yield f"\n\n⚠️ عذرًا، حصل مشكلة في الاتصال بـ AI بعد محاولة كل المستويات."
