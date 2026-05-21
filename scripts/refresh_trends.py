@@ -24,7 +24,7 @@ async def main():
             
             if repos:
                 print(f"💾 Processing and storing {since} repos in MongoDB...")
-                await service.process_and_store_repos(repos)
+                await service.process_and_store_repos(repos, since=since)
                 total_repos += len(repos)
         
         print(f"\n🎉 Refresh complete! {total_repos} total repos processed across all periods.")
