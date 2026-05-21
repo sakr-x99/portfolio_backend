@@ -235,7 +235,7 @@ class GitHubTrendsService:
 
     async def process_and_store_repos(self, repos: List[Dict[str, Any]], since: str = "daily"):
         # Fix any deeply nested since arrays from previous runs
-        async for doc in self.collection.find({"since": {"$exists": True}}).no_cursor_timeout():
+        async for doc in self.collection.find({"since": {"$exists": True}}):
             raw = doc.get("since")
             flat = []
             if isinstance(raw, list):
