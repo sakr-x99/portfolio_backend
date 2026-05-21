@@ -81,27 +81,6 @@ class ConversationMemory:
         data["metadata"] = meta
         await self._save(session_id, data)
 
-    async def clear(self, session_id: str):
-        r = self._get_redis()
-        if r:
-            try:
-                keys = r.keys(f"memory:{session_id}:*")
-                if keys:
-                    r.delete(*keys)
-            except Exception:
-                pass
-        self._memory_store.pop(session_id, None)
-
-    async def get_all_sessions(self) -> List[str]:
-        r = self._get_redis()
-        if r:
-            try:
-                keys = r.keys("memory:*:data")
-                return list(set(k.split(":")[1] for k in keys))
-            except Exception:
-                pass
-        return list(self._memory_store.keys())
-
     async def auto_summarize(self, session_id: str) -> str:
         """Auto-generate a summary of the conversation using AI."""
         messages = await self.get_messages(session_id, limit=30)
@@ -125,6 +104,17 @@ class ConversationMemory:
             logger.error("Auto-summarize failed: %s", e)
             return await self.get_summary(session_id)
 
+    async def _get_mongo(self):
+        try:
+            from motor.motor_asyncio import AsyncIOMotorClient
+            from app.core.config import settings
+            mongo_url = settings.MONGODB_URL or "mongodb://localhost:27017"
+            client = AsyncIOMotorClient(mongo_url)
+            db = client["portfolio"]
+            return db["conversations"]
+        except Exception:
+            return None
+
     async def _load(self, session_id: str) -> Dict:
         r = self._get_redis()
         if r:
@@ -133,11 +123,20 @@ class ConversationMemory:
                 data = r.get(key)
                 if data:
                     parsed = json.loads(data)
-                    # Refresh TTL on access
                     r.expire(key, self.MEMORY_TTL)
                     return parsed
             except Exception as e:
                 logger.warning("Redis load failed for %s: %s", session_id, e)
+
+        try:
+            coll = await self._get_mongo()
+            if coll:
+                doc = await coll.find_one({"_id": session_id})
+                if doc:
+                    doc.pop("_id", None)
+                    return doc
+        except Exception as e:
+            logger.debug("Mongo load failed for %s: %s", session_id, e)
 
         return self._memory_store.get(session_id, {
             "messages": [],
@@ -159,7 +158,55 @@ class ConversationMemory:
             except Exception as e:
                 logger.warning("Redis save failed for %s: %s", session_id, e)
 
+        try:
+            coll = await self._get_mongo()
+            if coll:
+                await coll.replace_one(
+                    {"_id": session_id},
+                    {"_id": session_id, **data},
+                    upsert=True,
+                )
+                return
+        except Exception as e:
+            logger.debug("Mongo save failed for %s: %s", session_id, e)
+
         self._memory_store[session_id] = data
+
+    async def get_all_sessions(self) -> List[str]:
+        r = self._get_redis()
+        if r:
+            try:
+                keys = r.keys("memory:*:data")
+                return list(set(k.split(":")[1] for k in keys))
+            except Exception:
+                pass
+
+        try:
+            coll = await self._get_mongo()
+            if coll:
+                docs = await coll.find({}, {"_id": 1}).to_list(length=100)
+                return [d["_id"] for d in docs]
+        except Exception:
+            pass
+
+        return list(self._memory_store.keys())
+
+    async def clear(self, session_id: str):
+        r = self._get_redis()
+        if r:
+            try:
+                keys = r.keys(f"memory:{session_id}:*")
+                if keys:
+                    r.delete(*keys)
+            except Exception:
+                pass
+        try:
+            coll = await self._get_mongo()
+            if coll:
+                await coll.delete_one({"_id": session_id})
+        except Exception:
+            pass
+        self._memory_store.pop(session_id, None)
 
     @staticmethod
     def generate_session_id() -> str:
