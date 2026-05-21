@@ -10,7 +10,12 @@ async def get_trending_repos(
     since: str = "daily"
 ):
     s = service.GitHubTrendsService()
-    return await s.get_active_repos(language=language)
+    return await s.get_active_repos(language=language, since=since)
+
+@router.get("/languages")
+async def get_available_languages():
+    s = service.GitHubTrendsService()
+    return await s.get_available_languages()
 
 @router.get("/search")
 async def search_repos(

@@ -13,19 +13,21 @@ async def main():
     try:
         service = GitHubTrendsService()
         
-        # 1. Fetch Trending Repos
-        print(" Fetching trending repos from GitHub...")
-        repos = await service.fetch_trending_repos(since="daily")
-        print(f"✅ Found {len(repos)} trending repos.")
+        # Fetch for all time periods
+        periods = ["daily", "weekly", "monthly"]
+        total_repos = 0
         
-        if not repos:
-            print("⚠️ No repos found. Exiting.")
-            return
-
-        # 2. Process and Store (README + AI Content)
-        print("💾 Processing and storing in MongoDB...")
-        await service.process_and_store_repos(repos)
-        print("🎉 Refresh complete! Database updated.")
+        for since in periods:
+            print(f"\n Fetching {since} trending repos from GitHub...")
+            repos = await service.fetch_trending_repos(since=since)
+            print(f"✅ Found {len(repos)} trending repos for {since}.")
+            
+            if repos:
+                print(f"💾 Processing and storing {since} repos in MongoDB...")
+                await service.process_and_store_repos(repos)
+                total_repos += len(repos)
+        
+        print(f"\n🎉 Refresh complete! {total_repos} total repos processed across all periods.")
         
     except Exception as e:
         print(f"❌ Error during refresh: {e}")

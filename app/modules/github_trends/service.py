@@ -27,7 +27,11 @@ class GitHubTrendsService:
         async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=20.0) as client:
             response = await client.get(url)
             response.raise_for_status()
-            return self._parse_github_html(response.text)
+            repos = self._parse_github_html(response.text)
+            # Tag repos with the since period
+            for repo in repos:
+                repo["since"] = since
+            return repos
 
     def _parse_github_html(self, html: str) -> List[Dict[str, Any]]:
         soup = bs4.BeautifulSoup(html, "lxml")
@@ -286,8 +290,8 @@ class GitHubTrendsService:
             
         return repos
 
-    async def get_active_repos(self, language: Optional[str] = None, limit: int = 25) -> List[Dict[str, Any]]:
-        query = {"is_active": True}
+    async def get_active_repos(self, language: Optional[str] = None, since: str = "daily", limit: int = 25) -> List[Dict[str, Any]]:
+        query = {"is_active": True, "since": since}
         if language:
             query["language"] = language
             
@@ -297,6 +301,11 @@ class GitHubTrendsService:
         for r in repos:
             r["_id"] = str(r["_id"])
         return repos
+
+    async def get_available_languages(self) -> List[str]:
+        """Get list of all unique languages from active repos."""
+        languages = await self.collection.distinct("language", {"is_active": True, "language": {"$ne": None}})
+        return sorted([lang for lang in languages if lang])
 
     async def get_repo_by_full_name(self, full_name: str) -> Optional[Dict[str, Any]]:
         repo = await self.collection.find_one({"full_name": full_name})
