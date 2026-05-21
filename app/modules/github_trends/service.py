@@ -234,11 +234,21 @@ class GitHubTrendsService:
         return sorted([lang for lang in languages if lang])
 
     async def process_and_store_repos(self, repos: List[Dict[str, Any]], since: str = "daily"):
-        # Fix old data: convert since from string to array
-        await self.collection.update_many(
-            {"since": {"$type": "string"}},
-            [{"$set": {"since": ["$since"]}}]
-        )
+        # Fix any deeply nested since arrays from previous runs
+        async for doc in self.collection.find({"since": {"$exists": True}}).no_cursor_timeout():
+            raw = doc.get("since")
+            flat = []
+            if isinstance(raw, list):
+                stack = list(raw)
+                while stack:
+                    item = stack.pop(0)
+                    if isinstance(item, list):
+                        stack = item + stack
+                    elif item not in flat:
+                        flat.append(item)
+            else:
+                flat = [raw] if raw else []
+            await self.collection.update_one({"_id": doc["_id"]}, {"$set": {"since": flat}})
         
         for repo_data in repos:
             existing_repo = await self.collection.find_one({"full_name": repo_data["full_name"]})
@@ -275,11 +285,20 @@ class GitHubTrendsService:
                     "updated_at": datetime.utcnow()
                 }
                 
-                # Add current period to the since array
-                await self.collection.update_one(
-                    {"_id": existing_repo["_id"]},
-                    {"$addToSet": {"since": since}}
-                )
+                # Set since directly instead of $addToSet to avoid nesting
+                existing_since = existing_repo.get("since", [])
+                if not isinstance(existing_since, list):
+                    existing_since = [existing_since]
+                # Flatten and deduplicate
+                flat_since = []
+                for item in existing_since:
+                    if isinstance(item, list):
+                        flat_since.extend(item)
+                    else:
+                        flat_since.append(item)
+                if since not in flat_since:
+                    flat_since.append(since)
+                update_data["since"] = flat_since
                 
                 if not existing_repo.get("readme_content"):
                     readme = await self.fetch_readme(repo_data["full_name"])
