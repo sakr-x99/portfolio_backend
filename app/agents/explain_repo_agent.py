@@ -44,6 +44,8 @@ class ExplainRepoAgent(BaseAgent):
         text = re.sub(r'<img[^>]+>', '', text, flags=re.IGNORECASE)
         text = re.sub(r'<svg[^>]*>.*?</svg>', '', text, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r'<figure[^>]*>.*?</figure>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'\b\S+\.(png|jpg|jpeg|gif|svg|webp|ico|bmp|tiff?)\b', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\b\S+%20(png|jpg|jpeg|gif|svg|webp|ico|bmp|tiff?)\b', '', text, flags=re.IGNORECASE)
         return text
 
     async def _fetch_repo_context(self, full_name: str, question: str = "") -> str:
@@ -80,7 +82,7 @@ class ExplainRepoAgent(BaseAgent):
             elif readme:
                 context_str = readme
             else:
-                context_str = repo.get("description", "No README available.")
+                context_str = self._strip_images(repo.get("description", "") or "No README available.")
 
         return repo, context_str
 
@@ -124,7 +126,8 @@ class ExplainRepoAgent(BaseAgent):
         full_name: str,
         question: str = "",
     ):
-        from app.services.ai.manager import ai_manager
+        import logging
+        logger = logging.getLogger(__name__)
 
         repo, context_str = await self._fetch_repo_context(full_name, question)
         if repo is None:
@@ -139,5 +142,18 @@ class ExplainRepoAgent(BaseAgent):
             {"role": "user", "content": user_message},
         ]
 
-        async for chunk in ai_manager.generate_stream(messages=messages, temperature=0.5, max_tokens=1024):
-            yield chunk
+        from app.services.ai.manager import ai_manager
+        try:
+            async for chunk in ai_manager.generate_stream(messages=messages, temperature=0.5, max_tokens=1024):
+                yield chunk
+        except Exception as e:
+            logger.error("AI generate_stream failed for explain_repo '%s': %s", full_name, e, exc_info=True)
+            # Try with ONLY the user message (no system prompt) as last resort
+            try:
+                logger.warning("Retrying explain_repo without system prompt context...")
+                fallback_messages = [{"role": "user", "content": user_message}]
+                async for chunk in ai_manager.generate_stream(messages=fallback_messages, temperature=0.5, max_tokens=512):
+                    yield chunk
+            except Exception as e2:
+                logger.error("Fallback also failed: %s", e2)
+                yield f"\n\n⚠️ عذرًا، حصل مشكلة في الاتصال بـ AI. الخطأ: {e}"
