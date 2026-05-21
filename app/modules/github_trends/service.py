@@ -169,67 +169,71 @@ class GitHubTrendsService:
             await asyncio.sleep(2)
 
     async def generate_and_store_ai_content(self, repo: Dict[str, Any]):
-        # Use crawl4ai to get full repo content if possible
-        repo_content = await crawl_service.crawl_url(repo["github_url"])
-        
-        prompt = f"""
-        Analyze this GitHub repository:
-        Name: {repo['full_name']}
-        Description: {repo['description']}
-        Language: {repo['language']}
-        
-        Full Repository Content (Extracted via Crawl4AI):
-        {repo_content if repo_content else "No additional content found."}
-        
-        Generate a premium Arabic markdown explanation. 
-        Focus on:
-        - What it does (concise)
-        - Why use it
-        - Real-world use cases
-        - Strengths & Weaknesses
-        - Difficulty level
-        - Best scenarios
-        - Alternatives
-        
-        Use modern Arabic technical writing. Premium developer tone.
-        Include frontmatter with: title, slug, language, category, stars, difficulty, topics.
-        """
-        
-        # Use github_trends_ai
-        messages = [{"role": "user", "content": prompt}]
-        content = await github_trends_ai.generate(messages=messages)
-        
-        # Store in Supabase
-        filename = f"{repo['full_name'].replace('/', '-')}.md"
-        path = f"repos/{filename}"
-        
-        if supabase:
+        try:
+            # Use crawl4ai to get full repo content if possible
             try:
-                # Store content in Supabase
-                supabase.storage.from_("github-trends").upload(
-                    path=path,
-                    file=content.encode("utf-8"),
-                    file_options={"upsert": "true", "content-type": "text/markdown"}
-                )
-                
-                # Update MongoDB with storage path and summary
-                arabic_summary = content.split("---")[-1].strip()[:500]
-                public_url = supabase.storage.from_("github-trends").get_public_url(path)
-                
-                await self.collection.update_one(
-                    {"_id": repo["_id"]},
-                    {"$set": {
-                        "storage_path": path,
-                        "analysis_url": public_url,
-                        "arabic_summary": arabic_summary,
-                        "updated_at": datetime.utcnow()
-                    }}
-                )
-                
-                # Index in Qdrant
-                await self.index_repo_in_qdrant(repo, content)
-            except Exception as e:
-                print(f"Error storing/indexing: {e}")
+                repo_content = await crawl_service.crawl_url(repo["github_url"])
+            except Exception:
+                repo_content = None
+            
+            prompt = f"""
+            Analyze this GitHub repository:
+            Name: {repo['full_name']}
+            Description: {repo['description']}
+            Language: {repo['language']}
+            
+            Full Repository Content (Extracted via Crawl4AI):
+            {repo_content if repo_content else "No additional content found."}
+            
+            Generate a premium Arabic markdown explanation. 
+            Focus on:
+            - What it does (concise)
+            - Why use it
+            - Real-world use cases
+            - Strengths & Weaknesses
+            - Difficulty level
+            - Best scenarios
+            - Alternatives
+            
+            Use modern Arabic technical writing. Premium developer tone.
+            Include frontmatter with: title, slug, language, category, stars, difficulty, topics.
+            """
+            
+            # Use github_trends_ai
+            messages = [{"role": "user", "content": prompt}]
+            content = await github_trends_ai.generate(messages=messages)
+            
+            # Store in Supabase (Optional)
+            if supabase:
+                try:
+                    filename = f"{repo['full_name'].replace('/', '-')}.md"
+                    path = f"repos/{filename}"
+                    
+                    supabase.storage.from_("github-trends").upload(
+                        path=path,
+                        file=content.encode("utf-8"),
+                        file_options={"upsert": "true", "content-type": "text/markdown"}
+                    )
+                    
+                    arabic_summary = content.split("---")[-1].strip()[:500]
+                    public_url = supabase.storage.from_("github-trends").get_public_url(path)
+                    
+                    await self.collection.update_one(
+                        {"_id": repo["_id"]},
+                        {"$set": {
+                            "storage_path": path,
+                            "analysis_url": public_url,
+                            "arabic_summary": arabic_summary,
+                            "updated_at": datetime.utcnow()
+                        }}
+                    )
+                    
+                    # Index in Qdrant
+                    await self.index_repo_in_qdrant(repo, content)
+                except Exception as e:
+                    print(f"Supabase/Qdrant storage skipped: {e}")
+        except Exception as e:
+            print(f"AI Generation skipped for {repo['full_name']}: {e}")
 
     async def index_repo_in_qdrant(self, repo: Dict[str, Any], content: str):
         from app.modules.rag.embeddings import embed_texts
