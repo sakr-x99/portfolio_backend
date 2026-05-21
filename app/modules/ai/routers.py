@@ -317,12 +317,27 @@ async def _explain_repo_stream(request: schemas.ExplainRepoRequest):
     """Stream an AI explanation of a GitHub repo using ExplainRepo agent."""
     from app.agents import ExplainRepoAgent
 
+    session_id = _ensure_session(request)
+    memory = _get_memory()
+
     agent = ExplainRepoAgent()
+    full_response = ""
     async for chunk in agent.process_stream(
         full_name=request.full_name,
         question=request.question,
     ):
+        full_response += chunk
         yield chunk
+
+    # Save to memory
+    user_msg = request.question or f"شرحتلي repo {request.full_name}"
+    await memory.add_message(session_id, "user", user_msg)
+    await memory.add_message(session_id, "assistant", full_response)
+
+    # Set conversation title from first interaction
+    meta = await memory.get_metadata(session_id)
+    if not meta.get("title"):
+        await memory.set_metadata(session_id, title=user_msg[:60])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
