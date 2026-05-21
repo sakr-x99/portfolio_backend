@@ -66,6 +66,23 @@ async def stream_chat(request: schemas.ChatRequest):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
+@router.post("/explain-repo/stream")
+async def explain_repo_stream(request: schemas.ExplainRepoRequest):
+    """
+    Explain a GitHub repo using RAG on its indexed README chunks.
+    The prompt is fixed on the backend — frontend just sends full_name.
+    """
+    async def event_generator():
+        try:
+            async for chunk in _explain_repo_stream(request):
+                yield f"data: {json.dumps({'content': chunk})}\n\n"
+        except Exception as e:
+            logger.error("Explain-repo stream failed: %s", e, exc_info=True)
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 async def _rag_chat_stream(request: schemas.ChatRequest):
     """Streaming chat using the RAG pipeline — no duplicated graph logic."""
     from app.modules.rag import pipeline, prompt as rag_prompt
@@ -119,6 +136,89 @@ async def _basic_chat_stream(request: schemas.ChatRequest):
         messages=messages,
         temperature=0.7,
         max_tokens=512
+    ):
+        yield chunk
+
+
+EXPLAIN_REPO_SYSTEM_PROMPT = """
+[LANGUAGE & STYLE]
+CRITICAL: You MUST speak ONLY in Egyptian Arabic (Masri / Cairo style). NEVER use Modern Standard Arabic (Fusha/MSA).
+CRITICAL: Use 1-2 emojis per response naturally.
+CRITICAL: Keep technical terms in English (e.g. Backend, API, React, Python). NEVER write them in Arabic letters.
+CRITICAL: NEVER mention you are answering based on "context" or "retrieved information". Just answer naturally.
+
+You are Sakr AI, an expert GitHub repository analyst.
+Your job is to explain repositories clearly and helpfully.
+
+When explaining a repo, cover:
+1. What the project is about (ببساطة المشروع ده إيه؟)
+2. The problem it solves (المشكلة اللي بيحلها)
+3. Architecture overview (إزاي بيشتغل من جوه)
+4. Key features (أهم المميزات)
+5. Use cases (أشهر حالات الاستخدام)
+6. Your honest developer opinion (رأيك فيه كـ developer)
+
+If you don't have enough context about the repo, admit it and suggest what the user can look for.
+
+CONTEXT FROM REPOSITORY README:
+{context}
+"""
+
+
+async def _explain_repo_stream(request: schemas.ExplainRepoRequest):
+    """Stream an AI explanation of a GitHub repo using RAG on its README chunks."""
+    from app.services.ai.manager import ai_manager
+    from app.modules.github_trends.service import GitHubTrendsService
+    from app.modules.rag.embeddings import embed_query
+    from app.modules.rag.vector_store import search
+
+    # 1. Fetch repo from MongoDB
+    svc = GitHubTrendsService()
+    repo = await svc.get_repo_by_full_name(request.full_name)
+    if not repo:
+        yield f"❌ مش لاقي الريبو {request.full_name}"
+        return
+
+    # 2. Search Qdrant for README chunks from this repo
+    repo_query = request.question or f"شرح ريبو {request.full_name}"
+    query_embedding = embed_query(repo_query)
+    chunks = search(
+        query_embedding,
+        top_k=10,
+        source_filter="repo_readme",
+        extra_filters={"full_name": request.full_name},
+    )
+
+    # 3. Build context from retrieved chunks
+    if chunks:
+        context_parts = []
+        for c in chunks:
+            context_parts.append(f"[Chunk {c.get('chunk_index', 0)}] {c['text']}")
+        context_str = "\n\n".join(context_parts)
+    else:
+        # Fallback: use full README from MongoDB (or description)
+        readme = repo.get("readme_content", "")
+        if readme and len(readme) > 8000:
+            context_str = readme[:8000] + "\n\n...(اختصار)"
+        elif readme:
+            context_str = readme
+        else:
+            context_str = repo.get("description", "No README available.")
+
+    # 4. Build fixed system prompt with context
+    system_content = EXPLAIN_REPO_SYSTEM_PROMPT.format(context=context_str)
+
+    user_message = request.question or f"شرحتلي الـ GitHub repository {request.full_name} بالعامية المصرية"
+
+    messages = [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": user_message},
+    ]
+
+    async for chunk in ai_manager.generate_stream(
+        messages=messages,
+        temperature=0.5,
+        max_tokens=1024
     ):
         yield chunk
 

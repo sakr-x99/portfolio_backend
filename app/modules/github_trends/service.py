@@ -186,6 +186,53 @@ class GitHubTrendsService:
             points=[point]
         )
 
+    async def index_readme_in_qdrant(self, full_name: str, readme_content: str):
+        """
+        Chunk a raw README and index it in Qdrant for RAG retrieval.
+        Uses source="repo_readme" to distinguish from AI summaries.
+        """
+        from app.modules.rag.embeddings import embed_texts
+        from app.modules.rag.vector_store import _get_client, ensure_collection
+        from app.modules.rag import config as rag_config
+        from app.modules.rag.chunker import RecursiveCharacterTextSplitter
+        from qdrant_client.models import PointStruct
+        import uuid
+
+        ensure_collection()
+
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=rag_config.CHUNK_SIZE,
+            chunk_overlap=rag_config.CHUNK_OVERLAP,
+            separators=["\n\n", "\n", ". ", " ", ""]
+        )
+
+        splits = text_splitter.split_text(readme_content)
+        texts = [split.page_content for split in splits]
+
+        if not texts:
+            return
+
+        embeddings = embed_texts(texts)
+
+        client = _get_client()
+        points = []
+        for i, (text, emb) in enumerate(zip(texts, embeddings)):
+            points.append(PointStruct(
+                id=str(uuid.uuid4()),
+                vector=emb,
+                payload={
+                    "text": text,
+                    "full_name": full_name,
+                    "source": "repo_readme",
+                    "chunk_index": i,
+                }
+            ))
+
+        batch_size = 100
+        for batch_start in range(0, len(points), batch_size):
+            batch = points[batch_start:batch_start + batch_size]
+            client.upsert(collection_name=rag_config.QDRANT_COLLECTION, points=batch)
+
     async def semantic_search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         from app.modules.rag.embeddings import embed_query
         from app.modules.rag.vector_store import _get_client
@@ -266,6 +313,7 @@ class GitHubTrendsService:
                         {"_id": repo_data["_id"]},
                         {"$set": {"readme_content": readme_content, "is_active": True}}
                     )
+                    await self.index_readme_in_qdrant(repo_data["full_name"], readme_content)
                 else:
                     await self.collection.update_one(
                         {"_id": repo_data["_id"]},
@@ -304,6 +352,7 @@ class GitHubTrendsService:
                     readme = await self.fetch_readme(repo_data["full_name"])
                     if readme:
                         update_data["readme_content"] = readme
+                        await self.index_readme_in_qdrant(repo_data["full_name"], readme)
                 
                 needs_ai = False
                 if "arabic_summary" not in existing_repo:

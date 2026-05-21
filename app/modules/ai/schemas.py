@@ -12,3 +12,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     content: str
+
+class ExplainRepoRequest(BaseModel):
+    full_name: str = Field(min_length=1, max_length=200, description="GitHub repo full name (owner/repo)")
+    question: str = Field(default="", max_length=500, description="Optional specific question about the repo")

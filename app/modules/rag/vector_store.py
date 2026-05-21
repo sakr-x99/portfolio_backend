@@ -131,20 +131,25 @@ def search(
     top_k: int = None,
     score_threshold: float = None,
     source_filter: Optional[str] = None,
+    extra_filters: Optional[Dict[str, str]] = None,
 ) -> List[Dict]:
     """
     Perform semantic similarity search in Qdrant.
+    Supports optional source filter and extra field filters (e.g. full_name).
     """
     _, _, _, _, Filter, FieldCondition, MatchValue = _get_qdrant()
     client = _get_client()
     top_k = top_k or config.TOP_K
     score_threshold = score_threshold or config.SCORE_THRESHOLD
 
-    search_filter = None
+    conditions = []
     if source_filter:
-        search_filter = Filter(
-            must=[FieldCondition(key="source", match=MatchValue(value=source_filter))]
-        )
+        conditions.append(FieldCondition(key="source", match=MatchValue(value=source_filter)))
+    if extra_filters:
+        for key, value in extra_filters.items():
+            conditions.append(FieldCondition(key=key, match=MatchValue(value=value)))
+
+    search_filter = Filter(must=conditions) if conditions else None
 
     results = client.search(
         collection_name=config.QDRANT_COLLECTION,
