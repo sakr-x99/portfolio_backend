@@ -100,7 +100,7 @@ class GitHubTrendsService:
             
             if not existing_repo:
                 repo_data["created_at"] = datetime.utcnow()
-                # Insert but keep inactive until AI is done
+                # Insert but keep inactive until we have content
                 repo_data["is_active"] = False 
                 result = await self.collection.insert_one(repo_data)
                 repo_data["_id"] = result.inserted_id
@@ -110,14 +110,20 @@ class GitHubTrendsService:
                 if readme_content:
                     await self.collection.update_one(
                         {"_id": repo_data["_id"]},
-                        {"$set": {"readme_content": readme_content}}
+                        {"$set": {"readme_content": readme_content, "is_active": True}}
+                    )
+                else:
+                    # Fallback: Activate anyway so it shows up (maybe add error flag later)
+                    await self.collection.update_one(
+                        {"_id": repo_data["_id"]},
+                        {"$set": {"is_active": True}}
                     )
                 
-                # Generate AI Content
-                await self.generate_and_store_ai_content(repo_data)
-                
-                # NOW activate it so it appears in UI
-                await self.collection.update_one({"_id": repo_data["_id"]}, {"$set": {"is_active": True}})
+                # Generate AI Content (Best effort, don't block activation)
+                try:
+                    await self.generate_and_store_ai_content(repo_data)
+                except Exception as e:
+                    print(f"AI Generation failed for {repo_data['full_name']}: {e}")
             else:
                 # Update stats and rank
                 update_data = {
