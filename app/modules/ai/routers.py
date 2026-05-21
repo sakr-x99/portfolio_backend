@@ -81,6 +81,18 @@ async def list_conversations(limit: int = Query(default=10, le=50)):
     return result
 
 
+@router.get("/conversations/{session_id}/messages")
+async def get_conversation_messages(session_id: str):
+    """Get messages for a specific conversation session."""
+    from app.memory import conversation_memory
+    try:
+        messages = await conversation_memory.get_messages(session_id, limit=50)
+        meta = await conversation_memory.get_metadata(session_id)
+        return {"session_id": session_id, "messages": messages, "metadata": meta}
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Conversation not found: {e}")
+
+
 @router.delete("/conversations/{session_id}")
 async def delete_conversation(session_id: str):
     """Delete a conversation session."""
